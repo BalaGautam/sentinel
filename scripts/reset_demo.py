@@ -115,15 +115,18 @@ def clear_firestore_leases_and_killswitch(db: firestore.Client) -> Dict[str, any
     deleted_reservations = 0
 
     try:
+        # Probe database connectivity first with short timeout
+        control_ref = db.collection("fleet").document("control")
+        control_ref.get(timeout=1.5)
+
         # 1. Clear top-level reservations collection if present
         try:
-            res_docs = db.collection("reservations").stream()
+            res_docs = db.collection("reservations").stream(timeout=2.0)
             for doc in res_docs:
                 doc.reference.delete()
                 deleted_reservations += 1
-        except Exception as e:
-            if "does not exist" in str(e).lower() or "404" in str(e):
-                raise e
+        except Exception:
+            pass
 
         # 2. Clear top-level leases collection if present
         try:

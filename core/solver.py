@@ -451,7 +451,7 @@ def load_deviation_from_bq(
 def write_scenarios_to_bq(
     bq_client: bigquery.Client, dataset_id: str, scenario_set: ScenarioSet
 ) -> None:
-    """Write every scenario to scenario_library BigQuery table (§8.1)."""
+    """Write every scenario to scenario_library BigQuery table and log SCORE to audit ledger (§8.1, I-10)."""
     table_ref = f"{bq_client.project}.{dataset_id}.scenario_library"
     rows_to_insert = []
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -475,6 +475,27 @@ def write_scenarios_to_bq(
     errors = bq_client.insert_rows_json(table_ref, rows_to_insert)
     if errors:
         raise RuntimeError(f"Failed writing scenarios to {table_ref}: {errors}")
+
+    # Emit SCORE record into audit ledger per I-10
+    try:
+        from core.ledger import append_ledger_record
+        append_ledger_record(
+            bq_client=bq_client,
+            dataset_id=dataset_id,
+            deviation_id=scenario_set.deviation_id,
+            workflow_root_id=f"WF-{scenario_set.deviation_id}",
+            phase="SCORE",
+            payload={
+                "recommended_scenario_id": scenario_set.recommended_scenario_id,
+                "solve_ms": scenario_set.solve_ms,
+                "degraded": scenario_set.degraded,
+                "result_sha256": scenario_set.result_sha256,
+                "scenario_count": len(scenario_set.scenarios),
+            },
+            solver_result_sha256=scenario_set.result_sha256,
+        )
+    except Exception as e:
+        print(f"Warning: Failed to append SCORE audit record: {e}", file=sys.stderr)
 
 
 # -----------------------------------------------------------------------------
