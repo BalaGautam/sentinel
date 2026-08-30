@@ -40,10 +40,10 @@ class Scenario(BaseModel):
     scenario_id: str
     label: Literal["STATUS_QUO", "AIR_EXPEDITE", "LINE_REBALANCE"]
     selected: list[dict]  # [{option_id, qty, cost_usd}]
-    total_cost_usd: Money
-    sla_penalty_usd: Money
-    total_exposure_usd: Money
-    days_to_coverage: int
+    total_cost_usd: Optional[Money] = None
+    sla_penalty_usd: Optional[Money] = None
+    total_exposure_usd: Optional[Money] = None
+    days_to_coverage: Optional[int] = None
     feasible: bool
     solver_status: Literal["OPTIMAL", "FEASIBLE", "HEURISTIC_FALLBACK", "INFEASIBLE"]
 

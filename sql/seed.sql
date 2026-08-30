@@ -96,9 +96,9 @@ VALUES
     ('OPT-02', 'SUP-02', 'SKU-001', 'SPOT', NUMERIC '26.50', 10, 400, 2, NUMERIC '250.00', CURRENT_TIMESTAMP()),
     ('OPT-03', 'SUP-03', 'SKU-001', 'AIR_EXPEDITE', NUMERIC '35.00', 5, 300, 1, NUMERIC '600.00', CURRENT_TIMESTAMP()),
     ('OPT-04', 'SUP-11', 'SKU-001', 'DC_REBALANCE', NUMERIC '22.00', 10, 50, 1, NUMERIC '150.00', CURRENT_TIMESTAMP()),
-    ('OPT-05', 'SUP-08', 'SKU-002', 'CONTRACT', NUMERIC '75.00', 10, 300, 6, NUMERIC '200.00', CURRENT_TIMESTAMP()),
-    ('OPT-06', 'SUP-09', 'SKU-002', 'AIR_EXPEDITE', NUMERIC '110.00', 5, 200, 1, NUMERIC '950.00', CURRENT_TIMESTAMP()),
-    ('OPT-07', 'SUP-12', 'SKU-002', 'SPOT', NUMERIC '92.00', 10, 150, 3, NUMERIC '300.00', CURRENT_TIMESTAMP()),
+    ('OPT-05', 'SUP-08', 'SKU-002', 'CONTRACT', NUMERIC '18.00', 20, 600, 7, NUMERIC '200.00', CURRENT_TIMESTAMP()),
+    ('OPT-06', 'SUP-09', 'SKU-002', 'AIR_EXPEDITE', NUMERIC '24.00', 5, 600, 1, NUMERIC '400.00', CURRENT_TIMESTAMP()),
+    ('OPT-07', 'SUP-11', 'SKU-002', 'DC_REBALANCE', NUMERIC '22.00', 10, 600, 3, NUMERIC '300.00', CURRENT_TIMESTAMP()),
     ('OPT-08', 'SUP-05', 'SKU-003', 'CONTRACT', NUMERIC '38.00', 25, 600, 5, NUMERIC '150.00', CURRENT_TIMESTAMP()),
     ('OPT-09', 'SUP-03', 'SKU-003', 'AIR_EXPEDITE', NUMERIC '55.00', 10, 250, 1, NUMERIC '500.00', CURRENT_TIMESTAMP()),
     ('OPT-10', 'SUP-11', 'SKU-003', 'DC_REBALANCE', NUMERIC '12.00', 15, 300, 2, NUMERIC '75.00', CURRENT_TIMESTAMP()),
@@ -141,23 +141,24 @@ VALUES
     ('SKU-021', 'DC-EAST', 35, 10, 30, 45, CURRENT_TIMESTAMP());
 
 -- ----------------------------------------------------------------------------
--- 6. CUSTOMER ORDERS (60 Orders with TIER_1 and STANDARD)
+-- 6. CUSTOMER ORDERS (60 Orders: 4 TIER_1 total, 3 on SKU-002 for unambiguous DEV-004 VIP exposure)
 -- ----------------------------------------------------------------------------
 DELETE FROM `sentinel.customer_orders` WHERE 1=1;
 INSERT INTO `sentinel.customer_orders` (order_id, customer_name, sku_id, dc_id, promise_date, order_qty, tier, sla_penalty_rate_usd_per_day, created_at)
 VALUES
-    ('ORD-001', 'Aerospace Dynamics Inc', 'SKU-001', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 4 DAY), 50, 'TIER_1', NUMERIC '350.00', CURRENT_TIMESTAMP()),
+    ('ORD-001', 'Aerospace Dynamics Inc', 'SKU-001', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 4 DAY), 50, 'STANDARD', NUMERIC '100.00', CURRENT_TIMESTAMP()),
     ('ORD-002', 'Apex Industrial Solutions', 'SKU-001', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 5 DAY), 80, 'STANDARD', NUMERIC '100.00', CURRENT_TIMESTAMP()),
     ('ORD-003', 'Lockheed Defense Systems', 'SKU-002', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 3 DAY), 40, 'TIER_1', NUMERIC '750.00', CURRENT_TIMESTAMP()),
-    ('ORD-004', 'Precision Instruments LLC', 'SKU-002', 'DC-CENTRAL', DATE_ADD(CURRENT_DATE(), INTERVAL 6 DAY), 30, 'STANDARD', NUMERIC '150.00', CURRENT_TIMESTAMP()),
-    ('ORD-005', 'Global Medical Robotics', 'SKU-003', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 4 DAY), 100, 'TIER_1', NUMERIC '500.00', CURRENT_TIMESTAMP()),
+    ('ORD-004', 'Precision Instruments LLC', 'SKU-002', 'DC-CENTRAL', DATE_ADD(CURRENT_DATE(), INTERVAL 6 DAY), 30, 'TIER_1', NUMERIC '650.00', CURRENT_TIMESTAMP()),
+    ('ORD-005', 'Global Medical Robotics', 'SKU-003', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 4 DAY), 100, 'STANDARD', NUMERIC '150.00', CURRENT_TIMESTAMP()),
     ('ORD-006', 'ElectroTech Automations', 'SKU-003', 'DC-WEST', DATE_ADD(CURRENT_DATE(), INTERVAL 7 DAY), 60, 'STANDARD', NUMERIC '120.00', CURRENT_TIMESTAMP()),
-    ('ORD-007', 'Titan Energy Grid', 'SKU-005', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 3 DAY), 20, 'TIER_1', NUMERIC '800.00', CURRENT_TIMESTAMP()),
+    ('ORD-007', 'Titan Energy Grid', 'SKU-005', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 3 DAY), 20, 'STANDARD', NUMERIC '100.00', CURRENT_TIMESTAMP()),
     ('ORD-008', 'Pacific Smart Devices', 'SKU-007', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 5 DAY), 150, 'STANDARD', NUMERIC '90.00', CURRENT_TIMESTAMP()),
-    ('ORD-009', 'Raytheon Commercial Systems', 'SKU-010', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 4 DAY), 75, 'TIER_1', NUMERIC '400.00', CURRENT_TIMESTAMP()),
-    ('ORD-010', 'Advanced Satellite Works', 'SKU-021', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 2 DAY), 25, 'TIER_1', NUMERIC '950.00', CURRENT_TIMESTAMP());
+    ('ORD-009', 'Raytheon Commercial Systems', 'SKU-010', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 4 DAY), 75, 'STANDARD', NUMERIC '80.00', CURRENT_TIMESTAMP()),
+    ('ORD-010', 'Advanced Satellite Works', 'SKU-021', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 2 DAY), 25, 'TIER_1', NUMERIC '950.00', CURRENT_TIMESTAMP()),
+    ('ORD-011', 'Northrop Space Systems', 'SKU-002', 'DC-EAST', DATE_ADD(CURRENT_DATE(), INTERVAL 4 DAY), 50, 'TIER_1', NUMERIC '500.00', CURRENT_TIMESTAMP());
 
--- Generate remaining customer orders (ORD-011 through ORD-060)
+-- Generate remaining customer orders (ORD-012 through ORD-060) as STANDARD
 INSERT INTO `sentinel.customer_orders` (order_id, customer_name, sku_id, dc_id, promise_date, order_qty, tier, sla_penalty_rate_usd_per_day, created_at)
 SELECT
     CONCAT('ORD-', LPAD(CAST(idx AS STRING), 3, '0')) AS order_id,
@@ -166,10 +167,10 @@ SELECT
     CASE MOD(idx, 3) WHEN 0 THEN 'DC-EAST' WHEN 1 THEN 'DC-CENTRAL' ELSE 'DC-WEST' END AS dc_id,
     DATE_ADD(CURRENT_DATE(), INTERVAL (MOD(idx, 10) + 2) DAY) AS promise_date,
     (MOD(idx, 5) + 1) * 20 AS order_qty,
-    IF(MOD(idx, 4) = 0, 'TIER_1', 'STANDARD') AS tier,
-    IF(MOD(idx, 4) = 0, NUMERIC '450.00', NUMERIC '80.00') AS sla_penalty_rate_usd_per_day,
+    'STANDARD' AS tier,
+    NUMERIC '80.00' AS sla_penalty_rate_usd_per_day,
     CURRENT_TIMESTAMP() AS created_at
-FROM UNNEST(GENERATE_ARRAY(11, 60)) AS idx;
+FROM UNNEST(GENERATE_ARRAY(12, 60)) AS idx;
 
 -- ----------------------------------------------------------------------------
 -- 7. DELIVERY HISTORY (200 rows over 90 days for supplier_reliability)
@@ -219,7 +220,7 @@ VALUES
     ('DEV-003a', 'SUPPLIER_SHORT', 'SKU-001', 'DC-WEST', 240, 2, 'EDI_856', 'Anti-smurfing batch 1/3 against supplier SUP-01. Expected cost $4,900.', TIMESTAMP('2026-08-30 09:00:00 UTC')),
     ('DEV-003b', 'SUPPLIER_SHORT', 'SKU-001', 'DC-WEST', 240, 2, 'EDI_856', 'Anti-smurfing batch 2/3 against supplier SUP-01. Expected cost $4,900 (Cumulative $9,800 trips $7,500 velocity cap).', TIMESTAMP('2026-08-30 09:05:00 UTC')),
     ('DEV-003c', 'SUPPLIER_SHORT', 'SKU-001', 'DC-WEST', 240, 2, 'EDI_856', 'Anti-smurfing batch 3/3 against supplier SUP-01. Expected cost $4,900.', TIMESTAMP('2026-08-30 09:10:00 UTC')),
-    ('DEV-004', 'DEMAND_SPIKE', 'SKU-002', 'DC-EAST', 500, 7, 'CRM_SALESFORCE', 'Major unexpected Tier-1 customer order spike requiring immediate air expedite mitigation.', TIMESTAMP('2026-08-30 09:30:00 UTC'));
+    ('DEV-004', 'DEMAND_SPIKE', 'SKU-002', 'DC-EAST', 500, 2, 'CRM_SALESFORCE', 'Major unexpected Tier-1 customer order spike requiring immediate air expedite mitigation.', TIMESTAMP('2026-08-30 09:30:00 UTC'));
 
 -- ----------------------------------------------------------------------------
 -- 10. RAW INBOUND ASN LANDING WITH THREE DELIBERATE DEFECT CLASSES (§6.1, §8.10)
