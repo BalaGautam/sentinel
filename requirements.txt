@@ -15,6 +15,7 @@ cffi==2.1.1
 charset-normalizer==3.5.1
 click==8.5.0
 cryptography==50.0.1
+db-dtypes==1.7.1
 distro==1.9.0
 docstring_parser==0.18.0
 fastapi==0.141.1

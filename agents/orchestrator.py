@@ -30,7 +30,7 @@ def create_triage_orchestrator_tools(bq_client: bigquery.Client, dataset_id: str
     def memory_read(supplier_id: str) -> str:
         """Read computed supplier reliability metrics from BigQuery."""
         query = f"""
-        SELECT supplier_id, on_time_rate_90d, lead_time_drift_days, quote_variance_pct, sample_size, provenance
+        SELECT supplier_id, on_time_rate_90d, avg_lead_time_drift_days, quote_variance_rate, sample_size, provenance
         FROM `{bq_client.project}.{dataset_id}.supplier_reliability`
         WHERE supplier_id = @sup_id
         LIMIT 1
@@ -45,7 +45,8 @@ def create_triage_orchestrator_tools(bq_client: bigquery.Client, dataset_id: str
                 raw_res = json.dumps({
                     "supplier_id": r["supplier_id"],
                     "on_time_rate_90d": float(r["on_time_rate_90d"]) if r["on_time_rate_90d"] is not None else None,
-                    "lead_time_drift_days": r["lead_time_drift_days"],
+                    "avg_lead_time_drift_days": float(r["avg_lead_time_drift_days"]) if r["avg_lead_time_drift_days"] is not None else 0.0,
+                    "quote_variance_rate": float(r["quote_variance_rate"]) if r["quote_variance_rate"] is not None else 0.0,
                     "sample_size": r["sample_size"],
                     "provenance": r["provenance"],
                 })

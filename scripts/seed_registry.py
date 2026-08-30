@@ -60,7 +60,7 @@ def seed_agent_registry():
             "version": "v1.0",
             "owning_department": "Global Procurement",
             "input_schema_ref": "contracts.models.Deviation",
-            "output_schema_ref": "contracts.models.SupplyOptionAnalysis",
+            "output_schema_ref": "contracts.models.SupplyOption",
             "rbac_scopes": ["bigquery.dataViewer", "aiplatform.user"],
             "status": "ACTIVE",
             "registered_at": datetime.now(timezone.utc).isoformat(),

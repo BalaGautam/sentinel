@@ -147,7 +147,7 @@ def verify_chain(bq_client: bigquery.Client, dataset_id: str) -> Tuple[bool, Opt
     SELECT record_id, deviation_id, workflow_root_id, phase, payload_sha256,
            prev_record_hash, record_hash, created_at
     FROM `{bq_client.project}.{dataset_id}.audit_ledger`
-    ORDER BY created_at ASC
+    ORDER BY created_at ASC, record_id ASC
     """
     try:
         rows = list(bq_client.query(query).result())
@@ -158,7 +158,10 @@ def verify_chain(bq_client: bigquery.Client, dataset_id: str) -> Tuple[bool, Opt
     if not rows:
         return True, None, 0
 
+    # First attempt direct chronological verification
     expected_prev = "GENESIS"
+    chrono_valid = True
+    chrono_broken_at = None
 
     for idx, row in enumerate(rows):
         rec_id = row["record_id"]
@@ -167,14 +170,48 @@ def verify_chain(bq_client: bigquery.Client, dataset_id: str) -> Tuple[bool, Opt
 
         if idx == 0:
             if prev_hash != "GENESIS":
-                return False, f"Genesis block corrupted at record {rec_id} (expected GENESIS, got {prev_hash})", len(rows)
+                chrono_valid = False
+                chrono_broken_at = f"Genesis block corrupted at record {rec_id} (expected GENESIS, got {prev_hash})"
+                break
         else:
             if prev_hash != expected_prev:
-                return False, f"Broken link at record {rec_id}: prev_record_hash {prev_hash} != expected {expected_prev}", len(rows)
+                chrono_valid = False
+                chrono_broken_at = f"Broken link at record {rec_id}: prev_record_hash {prev_hash} != expected {expected_prev}"
+                break
 
         expected_prev = rec_hash
 
-    return True, None, len(rows)
+    if chrono_valid:
+        return True, None, len(rows)
+
+    # Reconstruct chain by following hash pointers from GENESIS to handle timestamp jitter
+    prev_to_records = {}
+    for r in rows:
+        prev_to_records.setdefault(r["prev_record_hash"], []).append(r)
+
+    if "GENESIS" not in prev_to_records:
+        return False, chrono_broken_at or "Genesis block missing (no record with prev_record_hash='GENESIS')", len(rows)
+
+    ordered_chain = []
+    curr_hash = "GENESIS"
+    visited_ids = set()
+
+    while curr_hash in prev_to_records:
+        candidates = [c for c in prev_to_records[curr_hash] if c["record_id"] not in visited_ids]
+        if not candidates:
+            break
+        candidates.sort(key=lambda x: (str(x["created_at"]), x["record_id"]))
+        next_rec = candidates[0]
+        visited_ids.add(next_rec["record_id"])
+        ordered_chain.append(next_rec)
+        curr_hash = next_rec["record_hash"]
+
+    if len(ordered_chain) == len(rows):
+        return True, None, len(rows)
+
+    unlinked = [r["record_id"] for r in rows if r["record_id"] not in visited_ids]
+    broken_rec = unlinked[0] if unlinked else (chrono_broken_at or "UNKNOWN")
+    return False, f"Broken link at record {broken_rec}", len(rows)
 
 
 def main() -> int:
