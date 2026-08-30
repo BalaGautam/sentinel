@@ -80,30 +80,92 @@ def get_table_row_count(bq_client: bigquery.Client, dataset_id: str, table_name:
     return None
 
 
+TABLE_DDLS: Dict[str, str] = {
+    "audit_ledger": """
+    CREATE TABLE `{project}.{dataset}.audit_ledger` (
+        record_id STRING NOT NULL,
+        deviation_id STRING NOT NULL,
+        workflow_root_id STRING NOT NULL,
+        phase STRING NOT NULL,
+        payload_sha256 STRING NOT NULL,
+        prompt_digest STRING,
+        solver_result_sha256 STRING,
+        okf_outcome STRING,
+        operator_sub STRING,
+        operator_jti STRING,
+        approval_signature STRING,
+        prev_record_hash STRING NOT NULL,
+        record_hash STRING NOT NULL,
+        created_at TIMESTAMP NOT NULL
+    )
+    """,
+    "healing_actions": """
+    CREATE TABLE `{project}.{dataset}.healing_actions` (
+        action_id STRING NOT NULL,
+        deviation_id STRING NOT NULL,
+        sku_id STRING NOT NULL,
+        option_id STRING,
+        mode STRING NOT NULL,
+        qty INT64 NOT NULL,
+        cost_usd NUMERIC NOT NULL,
+        status STRING NOT NULL,
+        idempotency_key STRING NOT NULL,
+        executed_at TIMESTAMP NOT NULL
+    )
+    """,
+    "spend_transactions": """
+    CREATE TABLE `{project}.{dataset}.spend_transactions` (
+        transaction_id STRING NOT NULL,
+        workflow_root_id STRING NOT NULL,
+        tenant STRING NOT NULL,
+        supplier_id STRING NOT NULL,
+        sku_id STRING NOT NULL,
+        cost_center STRING NOT NULL,
+        amount_usd NUMERIC NOT NULL,
+        transaction_time TIMESTAMP NOT NULL
+    )
+    """,
+    "scenario_library": """
+    CREATE TABLE `{project}.{dataset}.scenario_library` (
+        scenario_id STRING NOT NULL,
+        deviation_id STRING NOT NULL,
+        label STRING NOT NULL,
+        selected_options_json STRING,
+        total_cost_usd NUMERIC,
+        sla_penalty_usd NUMERIC,
+        total_exposure_usd NUMERIC,
+        days_to_coverage INT64,
+        feasible BOOL NOT NULL,
+        solver_status STRING NOT NULL,
+        result_sha256 STRING NOT NULL,
+        created_at TIMESTAMP NOT NULL
+    )
+    """,
+}
+
+
 def truncate_bq_table(bq_client: bigquery.Client, dataset_id: str, table_name: str) -> None:
-    """Execute TRUNCATE TABLE statement on the specified BigQuery table."""
-    table_ref = f"`{bq_client.project}.{dataset_id}.{table_name}`"
-    query = f"TRUNCATE TABLE {table_ref}"
-    query_job = bq_client.query(query)
-    query_job.result()
+    """Drop and recreate table from DDL to cleanly discard any streaming buffer rows."""
+    table_id = f"{bq_client.project}.{dataset_id}.{table_name}"
+    try:
+        bq_client.delete_table(table_id, not_found_ok=True)
+    except Exception:
+        pass
+
+    ddl = TABLE_DDLS.get(table_name)
+    if ddl:
+        formatted_ddl = ddl.format(project=bq_client.project, dataset=dataset_id)
+        bq_client.query(formatted_ddl).result()
 
 
 def reset_bigquery_tables(bq_client: bigquery.Client, dataset_id: str) -> Dict[str, Dict[str, Optional[int]]]:
-    """Truncate all dynamic demo tables while recording before/after counts."""
+    """Recreate all dynamic demo tables while recording before/after counts."""
     counts: Dict[str, Dict[str, Optional[int]]] = {}
 
     for table in DYNAMIC_TABLES:
         before = get_table_row_count(bq_client, dataset_id, table)
-        if before is not None and before > 0:
-            truncate_bq_table(bq_client, dataset_id, table)
-            after = get_table_row_count(bq_client, dataset_id, table)
-        elif before is not None:
-            # Already 0 rows
-            after = 0
-        else:
-            # Table not found / not yet created
-            after = None
-
+        truncate_bq_table(bq_client, dataset_id, table)
+        after = get_table_row_count(bq_client, dataset_id, table)
         counts[table] = {"before": before, "after": after}
 
     return counts

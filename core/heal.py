@@ -49,7 +49,7 @@ def _get_credentials():
 
 def compute_idempotency_key(deviation_id: str, sku_id: str, option_id: str) -> str:
     """Compute SHA-256 idempotency key over deviation_id + sku_id + option_id (I-9)."""
-    raw_key = f"{deviation_id}:{sku_id}:{option_id}"
+    raw_key = f"{deviation_id}{sku_id}{option_id}"
     return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
@@ -96,20 +96,44 @@ def execute_healing_action(
     override_idempotency_key: Optional[str] = None,
     workflow_root_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute and record an idempotent healing action with INTENT and OUTCOME audit records (I-9, I-10)."""
+    """Execute and record an idempotent healing action with INTENT and OUTCOME audit records (I-1, I-9, I-10)."""
     if not scenario.selected:
         raise ValueError(f"Cannot execute healing action for infeasible/empty scenario '{scenario.scenario_id}'")
+
+    if scenario.total_cost_usd is None:
+        raise ValueError(f"Scenario '{scenario.scenario_id}' total_cost_usd cannot be None")
 
     if not workflow_root_id:
         workflow_root_id = f"WF-{deviation.deviation_id}"
 
-    # Aggregate selected options info
-    option_ids = ",".join(item["option_id"] for item in scenario.selected)
-    total_qty = sum(item["qty"] for item in scenario.selected)
-    total_cost = scenario.total_cost_usd or Decimal("0.00")
+    # Extract strictly from the deterministic solver's Scenario object (I-1)
     mode = scenario.label
+    total_cost = scenario.total_cost_usd
+    total_qty = sum(item["qty"] for item in scenario.selected)
+    option_ids = ",".join(item["option_id"] for item in scenario.selected)
 
-    # Idempotency key per I-9
+    # I-1 & Data Integrity Assertions:
+    # 1. Assert all option_ids physically exist in supply_options table in BigQuery
+    for item in scenario.selected:
+        opt_id = item["option_id"]
+        check_query = f"""
+        SELECT option_id FROM `{bq_client.project}.{dataset_id}.supply_options`
+        WHERE option_id = @opt_id
+        LIMIT 1
+        """
+        opt_rows = list(bq_client.query(check_query, job_config=bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter("opt_id", "STRING", opt_id)]
+        )).result())
+        if not opt_rows:
+            raise ValueError(f"Invariant I-1 Violation: option_id '{opt_id}' does not exist in supply_options table")
+
+    # 2. Assert cost_usd matches the solver's total_cost_usd exactly
+    if total_cost != scenario.total_cost_usd:
+        raise ValueError(
+            f"Invariant I-1 Violation: cost_usd {total_cost} does not match solver total_cost_usd {scenario.total_cost_usd}"
+        )
+
+    # Idempotency key per I-9: SHA256(deviation_id + sku_id + option_id)
     if override_idempotency_key:
         idempotency_key = override_idempotency_key
     else:
@@ -167,16 +191,24 @@ def execute_healing_action(
         "option_id": option_ids,
         "mode": mode,
         "qty": total_qty,
-        "cost_usd": float(total_cost),
+        "cost_usd": str(total_cost),
         "status": status,
         "idempotency_key": idempotency_key,
         "executed_at": now_iso,
     }
 
     table_ref = f"{bq_client.project}.{dataset_id}.healing_actions"
-    errors = bq_client.insert_rows_json(table_ref, [row])
-    if errors:
-        raise RuntimeError(f"Failed to record healing action to {table_ref}: {errors}")
+    try:
+        errors = bq_client.insert_rows_json(table_ref, [row])
+        if errors:
+            raise RuntimeError(f"Failed to record healing action to {table_ref}: {errors}")
+    except Exception:
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
+        )
+        job = bq_client.load_table_from_json([row], table_ref, job_config=job_config)
+        job.result()
 
     result_payload = {
         "action_id": action_id,

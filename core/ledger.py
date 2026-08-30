@@ -64,7 +64,7 @@ def get_latest_record_hash(bq_client: bigquery.Client, dataset_id: str) -> str:
 
 def compute_record_hash(prev_record_hash: str, payload: Dict[str, Any]) -> Tuple[str, str]:
     """Compute payload SHA-256 and record hash over prev_record_hash + canonical_json."""
-    canonical_payload = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    canonical_payload = json.dumps(payload, default=str, sort_keys=True, separators=(",", ":"))
     payload_sha256 = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
     combined = prev_record_hash + canonical_payload
     record_hash = hashlib.sha256(combined.encode("utf-8")).hexdigest()
@@ -111,9 +111,17 @@ def append_ledger_record(
     }
 
     table_ref = f"{bq_client.project}.{dataset_id}.audit_ledger"
-    errors = bq_client.insert_rows_json(table_ref, [row])
-    if errors:
-        raise RuntimeError(f"Failed to append audit ledger record: {errors}")
+    try:
+        errors = bq_client.insert_rows_json(table_ref, [row])
+        if errors:
+            raise RuntimeError(f"Failed to append audit ledger record: {errors}")
+    except Exception:
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
+        )
+        job = bq_client.load_table_from_json([row], table_ref, job_config=job_config)
+        job.result()
 
     return LedgerRecord(
         record_id=record_id,

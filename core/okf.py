@@ -223,10 +223,18 @@ class OKFGovernor:
             "supplier_id": supplier_id,
             "sku_id": sku_id,
             "cost_center": cost_center,
-            "amount_usd": float(amount_usd),
+            "amount_usd": str(amount_usd),
             "transaction_time": datetime.now(timezone.utc).isoformat(),
         }
-        self.bq_client.insert_rows_json(table_ref, [row])
+        try:
+            self.bq_client.insert_rows_json(table_ref, [row])
+        except Exception:
+            job_config = bigquery.LoadJobConfig(
+                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+                create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
+            )
+            job = self.bq_client.load_table_from_json([row], table_ref, job_config=job_config)
+            job.result()
 
         # 2. Clear lease from in-memory store and Firestore
         if reservation_id:

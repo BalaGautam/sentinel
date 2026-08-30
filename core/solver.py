@@ -462,9 +462,9 @@ def write_scenarios_to_bq(
             "deviation_id": scenario_set.deviation_id,
             "label": s.label,
             "selected_options_json": json.dumps(s.selected),
-            "total_cost_usd": float(s.total_cost_usd) if s.total_cost_usd is not None else None,
-            "sla_penalty_usd": float(s.sla_penalty_usd) if s.sla_penalty_usd is not None else None,
-            "total_exposure_usd": float(s.total_exposure_usd) if s.total_exposure_usd is not None else None,
+            "total_cost_usd": str(s.total_cost_usd) if s.total_cost_usd is not None else None,
+            "sla_penalty_usd": str(s.sla_penalty_usd) if s.sla_penalty_usd is not None else None,
+            "total_exposure_usd": str(s.total_exposure_usd) if s.total_exposure_usd is not None else None,
             "days_to_coverage": s.days_to_coverage,
             "feasible": s.feasible,
             "solver_status": s.solver_status,
@@ -472,9 +472,17 @@ def write_scenarios_to_bq(
             "created_at": now_iso,
         })
 
-    errors = bq_client.insert_rows_json(table_ref, rows_to_insert)
-    if errors:
-        raise RuntimeError(f"Failed writing scenarios to {table_ref}: {errors}")
+    try:
+        errors = bq_client.insert_rows_json(table_ref, rows_to_insert)
+        if errors:
+            raise RuntimeError(f"Failed writing scenarios to {table_ref}: {errors}")
+    except Exception:
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
+        )
+        job = bq_client.load_table_from_json(rows_to_insert, table_ref, job_config=job_config)
+        job.result()
 
     # Emit SCORE record into audit ledger per I-10
     try:
