@@ -18,6 +18,7 @@ Unconditionally logs a POLICY record to the audit ledger for every evaluation (I
 
 import sys
 import uuid
+import threading
 import subprocess
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
@@ -55,6 +56,120 @@ def _get_credentials():
         return None
 
 
+@firestore.transactional
+def _transactional_firestore_reserve(
+    transaction: firestore.Transaction,
+    fs_client: firestore.Client,
+    reservation_id: str,
+    dimensions: Dict[str, str],
+    amount_usd: Decimal,
+    dim_checks: List[Tuple[str, str, str, Decimal, Decimal]],
+) -> Tuple[bool, List[str], Dict[str, Dict[str, str]]]:
+    """Execute atomic reservation read-modify-write in Firestore (§8.2, I-4)."""
+    doc_refs = {}
+    current_in_flights = {}
+
+    # 1. READ ALL LEASE LOCKS (Firestore requires all reads before writes in transaction)
+    for dim_name, col_name, val, past_spent, ceiling in dim_checks:
+        doc_ref = fs_client.collection("lease_locks").document(f"{col_name}_{val}")
+        doc_refs[dim_name] = (doc_ref, past_spent, ceiling, col_name, val)
+        snap = doc_ref.get(transaction=transaction)
+        in_flight = Decimal(str(snap.to_dict().get("in_flight_usd", 0.0))) if snap.exists else Decimal("0.00")
+        current_in_flights[dim_name] = in_flight
+
+    triggered = []
+    snapshots = {}
+    for dim_name, (doc_ref, past_spent, ceiling, col_name, val) in doc_refs.items():
+        used = past_spent + current_in_flights[dim_name]
+        projected = used + amount_usd
+        snapshots[dim_name.lower()] = {
+            "used": str(used),
+            "projected": str(projected),
+            "ceiling": str(ceiling),
+        }
+        if projected > ceiling:
+            triggered.append(f"VELOCITY_CAP:{dim_name}")
+
+    if triggered:
+        return False, triggered, snapshots
+
+    # 2. WRITE UPDATED LEASE LOCKS & RESERVATION
+    for dim_name, (doc_ref, past_spent, ceiling, col_name, val) in doc_refs.items():
+        new_in_flight = current_in_flights[dim_name] + amount_usd
+        transaction.set(
+            doc_ref,
+            {
+                "dimension": col_name,
+                "value": val,
+                "in_flight_usd": float(new_in_flight),
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+    res_ref = fs_client.collection("reservations").document(reservation_id)
+    transaction.set(
+        res_ref,
+        {
+            "reservation_id": reservation_id,
+            "tenant": dimensions.get("tenant", "SENTINEL_CORP"),
+            "supplier_id": dimensions.get("supplier_id", ""),
+            "sku_id": dimensions.get("sku_id", ""),
+            "cost_center": dimensions.get("cost_center", ""),
+            "workflow_root_id": dimensions.get("workflow_root_id", ""),
+            "amount_usd": float(amount_usd),
+            "status": "PENDING",
+            "created_at": firestore.SERVER_TIMESTAMP,
+        },
+    )
+
+    return True, [], snapshots
+
+
+@firestore.transactional
+def _transactional_firestore_release(
+    transaction: firestore.Transaction,
+    fs_client: firestore.Client,
+    reservation_id: str,
+) -> None:
+    """Release reservation lease in Firestore atomically (§8.2, I-4)."""
+    res_ref = fs_client.collection("reservations").document(reservation_id)
+    res_snap = res_ref.get(transaction=transaction)
+    if not res_snap.exists:
+        return
+    res_data = res_snap.to_dict() or {}
+    amt = Decimal(str(res_data.get("amount_usd", 0.0)))
+
+    dim_pairs = [
+        ("tenant", res_data.get("tenant", "SENTINEL_CORP")),
+        ("supplier_id", res_data.get("supplier_id", "")),
+        ("sku_id", res_data.get("sku_id", "")),
+        ("cost_center", res_data.get("cost_center", "")),
+        ("workflow_root_id", res_data.get("workflow_root_id", "")),
+    ]
+
+    # Read locks
+    lock_snaps = {}
+    for col_name, val in dim_pairs:
+        if val:
+            doc_ref = fs_client.collection("lease_locks").document(f"{col_name}_{val}")
+            snap = doc_ref.get(transaction=transaction)
+            lock_snaps[col_name] = (doc_ref, snap)
+
+    # Write locks
+    for col_name, (doc_ref, snap) in lock_snaps.items():
+        if snap.exists:
+            cur = Decimal(str(snap.to_dict().get("in_flight_usd", 0.0)))
+            new_val = max(Decimal("0.00"), cur - amt)
+            transaction.set(
+                doc_ref,
+                {"in_flight_usd": float(new_val), "updated_at": firestore.SERVER_TIMESTAMP},
+                merge=True,
+            )
+
+    transaction.delete(res_ref)
+
+
 class OKFGovernor:
     """Policy Governor loaded dynamically from the okf_policy BigQuery table."""
 
@@ -62,6 +177,9 @@ class OKFGovernor:
         self.bq_client = bq_client
         self.dataset_id = dataset_id
         self.fs_client = fs_client
+
+        # Thread synchronization lock for local concurrency safety
+        self._lock = threading.RLock()
 
         # Local in-memory reservation store for in-flight leases (I-4)
         self._in_memory_reservations: Dict[str, Dict[str, Any]] = {}
@@ -164,43 +282,81 @@ class OKFGovernor:
 
         return total_reserved
 
-    def create_reservation(self, dimensions: Dict[str, str], amount_usd: Decimal) -> str:
-        """Create a pending in-flight spend reservation lease (§8.2, I-4)."""
+    def create_reservation(
+        self,
+        dimensions: Dict[str, str],
+        amount_usd: Decimal,
+        dim_checks: Optional[List[Tuple[str, str, str, Decimal, Decimal]]] = None,
+    ) -> Tuple[bool, Optional[str], List[str], Dict[str, Dict[str, str]]]:
+        """Create a pending in-flight spend reservation lease with transactional safety (§8.2, I-4)."""
         reservation_id = f"RES-{uuid.uuid4().hex[:8].upper()}"
-        lease_data = {
-            "reservation_id": reservation_id,
-            "tenant": dimensions.get("tenant", "SENTINEL_CORP"),
-            "supplier_id": dimensions.get("supplier_id", ""),
-            "sku_id": dimensions.get("sku_id", ""),
-            "cost_center": dimensions.get("cost_center", ""),
-            "workflow_root_id": dimensions.get("workflow_root_id", ""),
-            "amount_usd": str(amount_usd),
-            "status": "PENDING",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
+        with self._lock:
+            # 1. Evaluate in-memory leases
+            triggered = []
+            snapshots = {}
+            if dim_checks:
+                for dim_name, col_name, val, past_spent, ceiling in dim_checks:
+                    in_flight = Decimal("0.00")
+                    for res in self._in_memory_reservations.values():
+                        if res.get("status") == "PENDING" and res.get(col_name) == val:
+                            in_flight += Decimal(str(res.get("amount_usd", "0.00")))
+                    used = past_spent + in_flight
+                    projected = used + amount_usd
+                    snapshots[dim_name.lower()] = {
+                        "used": str(used),
+                        "projected": str(projected),
+                        "ceiling": str(ceiling),
+                    }
+                    if projected > ceiling:
+                        rule_tag = f"VELOCITY_CAP:{dim_name}"
+                        if rule_tag not in triggered:
+                            triggered.append(rule_tag)
 
-        # Store in-memory lease
-        self._in_memory_reservations[reservation_id] = lease_data
+                if triggered:
+                    return False, None, triggered, snapshots
 
-        # Store in Firestore if active
-        if self.fs_client:
-            try:
-                doc_ref = self.fs_client.collection("reservations").document(reservation_id)
-                doc_ref.set({
-                    "reservation_id": reservation_id,
-                    "tenant": dimensions.get("tenant", "SENTINEL_CORP"),
-                    "supplier_id": dimensions.get("supplier_id", ""),
-                    "sku_id": dimensions.get("sku_id", ""),
-                    "cost_center": dimensions.get("cost_center", ""),
-                    "workflow_root_id": dimensions.get("workflow_root_id", ""),
-                    "amount_usd": float(amount_usd),
-                    "status": "PENDING",
-                    "created_at": firestore.SERVER_TIMESTAMP,
-                })
-            except Exception:
-                pass
+            # 2. Firestore transactional reservation
+            if self.fs_client and dim_checks:
+                try:
+                    txn = self.fs_client.transaction()
+                    fs_ok, fs_triggered, fs_snaps = _transactional_firestore_reserve(
+                        txn, self.fs_client, reservation_id, dimensions, amount_usd, dim_checks
+                    )
+                    if not fs_ok:
+                        return False, None, fs_triggered, fs_snaps
+                    snapshots.update(fs_snaps)
+                except Exception:
+                    pass
+            elif self.fs_client:
+                try:
+                    self.fs_client.collection("reservations").document(reservation_id).set({
+                        "reservation_id": reservation_id,
+                        "tenant": dimensions.get("tenant", "SENTINEL_CORP"),
+                        "supplier_id": dimensions.get("supplier_id", ""),
+                        "sku_id": dimensions.get("sku_id", ""),
+                        "cost_center": dimensions.get("cost_center", ""),
+                        "workflow_root_id": dimensions.get("workflow_root_id", ""),
+                        "amount_usd": float(amount_usd),
+                        "status": "PENDING",
+                        "created_at": firestore.SERVER_TIMESTAMP,
+                    })
+                except Exception:
+                    pass
 
-        return reservation_id
+            # Record in-memory lease
+            self._in_memory_reservations[reservation_id] = {
+                "reservation_id": reservation_id,
+                "tenant": dimensions.get("tenant", "SENTINEL_CORP"),
+                "supplier_id": dimensions.get("supplier_id", ""),
+                "sku_id": dimensions.get("sku_id", ""),
+                "cost_center": dimensions.get("cost_center", ""),
+                "workflow_root_id": dimensions.get("workflow_root_id", ""),
+                "amount_usd": str(amount_usd),
+                "status": "PENDING",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            return True, reservation_id, [], snapshots
 
     def commit_reservation(
         self,
@@ -213,47 +369,51 @@ class OKFGovernor:
         amount_usd: Decimal,
     ) -> None:
         """Commit an approved reservation by removing lease and writing spend_transactions."""
-        # 1. Append spend transaction to BigQuery
-        table_ref = f"{self.bq_client.project}.{self.dataset_id}.spend_transactions"
-        txn_id = f"TXN-{uuid.uuid4().hex[:8].upper()}"
-        row = {
-            "transaction_id": txn_id,
-            "workflow_root_id": workflow_root_id,
-            "tenant": tenant,
-            "supplier_id": supplier_id,
-            "sku_id": sku_id,
-            "cost_center": cost_center,
-            "amount_usd": str(amount_usd),
-            "transaction_time": datetime.now(timezone.utc).isoformat(),
-        }
-        try:
-            self.bq_client.insert_rows_json(table_ref, [row])
-        except Exception:
-            job_config = bigquery.LoadJobConfig(
-                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-                create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
-            )
-            job = self.bq_client.load_table_from_json([row], table_ref, job_config=job_config)
-            job.result()
+        with self._lock:
+            # 1. Append spend transaction to BigQuery
+            table_ref = f"{self.bq_client.project}.{self.dataset_id}.spend_transactions"
+            txn_id = f"TXN-{uuid.uuid4().hex[:8].upper()}"
+            row = {
+                "transaction_id": txn_id,
+                "workflow_root_id": workflow_root_id,
+                "tenant": tenant,
+                "supplier_id": supplier_id,
+                "sku_id": sku_id,
+                "cost_center": cost_center,
+                "amount_usd": str(amount_usd),
+                "transaction_time": datetime.now(timezone.utc).isoformat(),
+            }
+            try:
+                self.bq_client.insert_rows_json(table_ref, [row])
+            except Exception:
+                job_config = bigquery.LoadJobConfig(
+                    write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+                    create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
+                )
+                job = self.bq_client.load_table_from_json([row], table_ref, job_config=job_config)
+                job.result()
 
-        # 2. Clear lease from in-memory store and Firestore
-        if reservation_id:
-            self._in_memory_reservations.pop(reservation_id, None)
-            if self.fs_client:
-                try:
-                    self.fs_client.collection("reservations").document(reservation_id).delete()
-                except Exception:
-                    pass
+            # 2. Clear lease from in-memory store and Firestore
+            if reservation_id:
+                self._in_memory_reservations.pop(reservation_id, None)
+                if self.fs_client:
+                    try:
+                        txn = self.fs_client.transaction()
+                        _transactional_firestore_release(txn, self.fs_client, reservation_id)
+                    except Exception:
+                        pass
 
     def release_reservation(self, reservation_id: Optional[str]) -> None:
         """Release a rejected/cancelled reservation lease without booking spend."""
-        if reservation_id:
-            self._in_memory_reservations.pop(reservation_id, None)
-            if self.fs_client:
-                try:
-                    self.fs_client.collection("reservations").document(reservation_id).delete()
-                except Exception:
-                    pass
+        with self._lock:
+            if reservation_id:
+                self._in_memory_reservations.pop(reservation_id, None)
+                if self.fs_client:
+                    try:
+                        txn = self.fs_client.transaction()
+                        _transactional_firestore_release(txn, self.fs_client, reservation_id)
+                    except Exception:
+                        pass
 
     def check_has_tier_1_orders(self, sku_id: str, dc_id: str) -> bool:
         """Check if any active customer order for this sku and dc is TIER_1."""
@@ -326,71 +486,79 @@ class OKFGovernor:
         # Snapshots
         counters_snapshot: Dict[str, Dict[str, str]] = {}
 
-        # 1. Check KILL_SWITCH (Most restrictive: BLOCKED)
-        if self.check_kill_switch():
-            triggered_rules.append("KILL_SWITCH")
-            outcome = "BLOCKED"
-            reservation_id = None
-        else:
-            # 2. Check SINGLE_TXN_CAP
-            single_cap = self.policies.get("SINGLE_TXN_CAP", {}).get("ceiling_usd", Decimal("5000.00"))
-            if amount_usd > single_cap:
-                triggered_rules.append("SINGLE_TXN_CAP")
-
-            # 3. Check VELOCITY_CAP across all 5 dimensions (including pending reservation leases)
-            for dim_name, col_name, val, ceiling in dim_mapping:
-                past_spent = self.get_24h_spent(col_name, val)
-                in_flight = self.get_in_flight_reservations(col_name, val)
-                used = past_spent + in_flight
-                projected = used + amount_usd
-
-                counters_snapshot[dim_name.lower()] = {
-                    "used": str(used),
-                    "projected": str(projected),
-                    "ceiling": str(ceiling),
-                }
-
-                if projected > ceiling:
-                    rule_tag = f"VELOCITY_CAP:{dim_name}"
-                    if rule_tag not in triggered_rules and "VELOCITY_CAP" not in triggered_rules:
-                        triggered_rules.append(rule_tag)
-
-            # 4. Check VIP_GUARD
-            if self.check_has_tier_1_orders(deviation.sku_id, deviation.dc_id):
-                triggered_rules.append("VIP_GUARD")
-
-            # 5. Check DEGRADED_SOLVER (I-11)
-            if scenario_set.degraded or recommended_scenario.solver_status == "HEURISTIC_FALLBACK":
-                triggered_rules.append("DEGRADED_SOLVER")
-
-            # Outcome determination
-            if triggered_rules:
-                outcome = "REQUIRE_HITL"
+        with self._lock:
+            # 1. Check KILL_SWITCH (Most restrictive: BLOCKED)
+            if self.check_kill_switch():
+                triggered_rules.append("KILL_SWITCH")
+                outcome = "BLOCKED"
                 reservation_id = None
             else:
-                outcome = "AUTO_HEAL"
-                reservation_id = self.create_reservation(dimensions, amount_usd)
+                # 2. Check SINGLE_TXN_CAP
+                single_cap = self.policies.get("SINGLE_TXN_CAP", {}).get("ceiling_usd", Decimal("5000.00"))
+                if amount_usd > single_cap:
+                    triggered_rules.append("SINGLE_TXN_CAP")
 
-        # Unconditionally log POLICY record into audit ledger per I-10
-        try:
-            append_ledger_record(
-                bq_client=self.bq_client,
-                dataset_id=self.dataset_id,
-                deviation_id=deviation.deviation_id,
-                workflow_root_id=workflow_root_id,
-                phase="POLICY",
-                payload={
-                    "outcome": outcome,
-                    "triggered_rules": triggered_rules,
-                    "counters_snapshot": counters_snapshot,
-                    "amount_usd": str(amount_usd),
-                    "policy_version": self.policy_version,
-                },
-                solver_result_sha256=scenario_set.result_sha256,
-                okf_outcome=outcome,
-            )
-        except Exception as e:
-            print(f"Warning: Failed to append POLICY audit record: {e}", file=sys.stderr)
+                # 3. Check VIP_GUARD
+                if self.check_has_tier_1_orders(deviation.sku_id, deviation.dc_id):
+                    triggered_rules.append("VIP_GUARD")
+
+                # 4. Check DEGRADED_SOLVER (I-11)
+                if scenario_set.degraded or recommended_scenario.solver_status == "HEURISTIC_FALLBACK":
+                    triggered_rules.append("DEGRADED_SOLVER")
+
+                # 5. Check VELOCITY_CAP across all 5 dimensions
+                dim_checks = []
+                for dim_name, col_name, val, ceiling in dim_mapping:
+                    past_spent = self.get_24h_spent(col_name, val)
+                    dim_checks.append((dim_name, col_name, val, past_spent, ceiling))
+
+                if triggered_rules:
+                    outcome = "REQUIRE_HITL"
+                    reservation_id = None
+                    for dim_name, col_name, val, past_spent, ceiling in dim_checks:
+                        in_flight = self.get_in_flight_reservations(col_name, val)
+                        used = past_spent + in_flight
+                        projected = used + amount_usd
+                        counters_snapshot[dim_name.lower()] = {
+                            "used": str(used),
+                            "projected": str(projected),
+                            "ceiling": str(ceiling),
+                        }
+                else:
+                    # Attempt atomic reservation
+                    res_ok, res_id, res_triggered, snapshots = self.create_reservation(
+                        dimensions, amount_usd, dim_checks=dim_checks
+                    )
+                    counters_snapshot.update(snapshots)
+                    if res_ok:
+                        outcome = "AUTO_HEAL"
+                        reservation_id = res_id
+                    else:
+                        triggered_rules.extend(res_triggered)
+                        outcome = "REQUIRE_HITL"
+                        reservation_id = None
+
+            # Unconditionally log POLICY record into audit ledger per I-10 with head linearization
+            try:
+                append_ledger_record(
+                    bq_client=self.bq_client,
+                    dataset_id=self.dataset_id,
+                    deviation_id=deviation.deviation_id,
+                    workflow_root_id=workflow_root_id,
+                    phase="POLICY",
+                    payload={
+                        "outcome": outcome,
+                        "triggered_rules": triggered_rules,
+                        "counters_snapshot": counters_snapshot,
+                        "amount_usd": str(amount_usd),
+                        "policy_version": self.policy_version,
+                    },
+                    solver_result_sha256=scenario_set.result_sha256,
+                    okf_outcome=outcome,
+                    fs_client=self.fs_client,
+                )
+            except Exception as e:
+                print(f"Warning: Failed to append POLICY audit record: {e}", file=sys.stderr)
 
         return OKFDecision(
             outcome=outcome,

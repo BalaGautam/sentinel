@@ -235,6 +235,11 @@ by SKU and they slice across cost centers. Five dimensions, all evaluated, is th
 Reserve-then-commit with pending reservations counted is the fix, and it needs a transactional
 store — which is why one Firestore document sits alongside an otherwise all-BigQuery design.
 
+**Check-then-act is a race, and proving it requires actual contention.** Our first concurrency
+test called both workflows sequentially — it validated the logic but never exercised the race.
+Two threads on a barrier, run ten times, is the difference between asserting an invariant and
+demonstrating it.
+
 **BigQuery is not immutable, and pretending otherwise would be the weakest claim in the project.**
 Hash-chaining makes tampering detectable, which is an honest and provable property.
 
@@ -257,10 +262,9 @@ Stated plainly, because a claim we cannot demonstrate is worth less than an hone
 - **Agent Registry is a BigQuery table with versioned manifests**, not the GEAP Agent Registry.
 - **Memory is a BigQuery table**, not Vertex AI Memory Bank. It is persistent state — persistence is not memory, and we do not call it a Memory Bank.
 - **The guardrail is a deterministic pattern pre-filter**, not Model Armor and not an ML classifier. It blocks the injection class we test for; it is not a general-purpose defense.
-- **OpenTelemetry spans export to stderr**, not Cloud Trace. The instrumentation is real; the exporter is not wired to Cloud Trace.
 - **No A2UI adapter** — the UI is Streamlit only.
 - **No Data Engineering Agent.** `sentinel_raw.asn_landing` contains the seeded defect classes and `v_feed_quality` detects them, but no agent-built repair pipeline runs. The view reports raw-feed defect detection, not pipeline repair output.
-- **The I-4 concurrency test is sequential**, not truly parallel. It exercises the reserve/release logic and pending-counted ceilings, but does not spawn concurrent processes.
+- **The concurrency test is multi-threaded within a single process**, not multi-instance. The Firestore transaction is what provides distributed safety; the test validates it under genuine thread contention (10/10 runs, exactly one winner), but does not exercise multiple Cloud Run instances.
 - **Approvals are HMAC-signed, not OIDC-signed.** The HMAC proves payload integrity; operator identity is supplied rather than authenticated.
 - **All data is synthetic**, generated for this submission.
 

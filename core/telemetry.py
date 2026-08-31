@@ -15,16 +15,19 @@ import logging
 from functools import wraps
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, Generator
+from typing import Dict, Any, Optional, Generator, Sequence
 
 from opentelemetry import trace, context
 from opentelemetry.trace import Tracer, Span, StatusCode, SpanKind
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     ConsoleSpanExporter,
     SimpleSpanProcessor,
+    SpanExporter,
+    SpanExportResult,
 )
+from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.sdk.resources import Resource
 
@@ -32,6 +35,63 @@ from google.cloud import bigquery
 from config import settings
 
 logger = logging.getLogger("sentinel.telemetry")
+
+
+class FallbackTraceSpanExporter(SpanExporter):
+    """Exports spans to Google Cloud Trace with automatic fallback to ConsoleSpanExporter (§8.12)."""
+
+    def __init__(self, project_id: Optional[str] = None):
+        self.project_id = project_id or settings.PROJECT_ID
+        self._console_exporter = ConsoleSpanExporter(out=sys.stderr)
+        self._cloud_exporter: Optional[CloudTraceSpanExporter] = None
+        try:
+            self._cloud_exporter = CloudTraceSpanExporter(project_id=self.project_id)
+        except Exception as exc:
+            logger.warning(
+                "Failed to initialize CloudTraceSpanExporter for project %s: %s. Using ConsoleSpanExporter fallback.",
+                self.project_id,
+                exc,
+            )
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        if self._cloud_exporter is not None:
+            try:
+                res = self._cloud_exporter.export(spans)
+                if res == SpanExportResult.SUCCESS:
+                    return res
+                logger.warning(
+                    "CloudTraceSpanExporter export returned non-success result (%s). Falling back to ConsoleSpanExporter.",
+                    res,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "CloudTraceSpanExporter export threw an exception (%s). Falling back to ConsoleSpanExporter.",
+                    exc,
+                )
+        return self._console_exporter.export(spans)
+
+    def shutdown(self) -> None:
+        if self._cloud_exporter is not None:
+            try:
+                self._cloud_exporter.shutdown()
+            except Exception:
+                pass
+        self._console_exporter.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        success = True
+        if self._cloud_exporter is not None and hasattr(self._cloud_exporter, "force_flush"):
+            try:
+                success = self._cloud_exporter.force_flush(timeout_millis)
+            except Exception:
+                success = False
+        if hasattr(self._console_exporter, "force_flush"):
+            try:
+                self._console_exporter.force_flush(timeout_millis)
+            except Exception:
+                pass
+        return success
+
 
 # Initialize global OpenTelemetry Tracer Provider
 _resource = Resource.create({
@@ -43,8 +103,8 @@ _resource = Resource.create({
 })
 
 _tracer_provider = TracerProvider(resource=_resource)
-_console_exporter = ConsoleSpanExporter(out=sys.stderr)
-_tracer_provider.add_span_processor(SimpleSpanProcessor(_console_exporter))
+_trace_exporter = FallbackTraceSpanExporter(project_id=settings.PROJECT_ID)
+_tracer_provider.add_span_processor(SimpleSpanProcessor(_trace_exporter))
 
 trace.set_tracer_provider(_tracer_provider)
 _tracer = trace.get_tracer("sentinel.orchestrator", "1.0.0")

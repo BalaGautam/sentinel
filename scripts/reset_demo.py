@@ -190,12 +190,19 @@ def clear_firestore_leases_and_killswitch(db: firestore.Client) -> Dict[str, any
         except Exception:
             pass
 
-        # 2. Clear top-level leases collection if present
+        # 2. Clear top-level leases & lease_locks collection if present
         try:
             lease_docs = db.collection("leases").stream()
             for doc in lease_docs:
                 doc.reference.delete()
                 deleted_leases += 1
+        except Exception:
+            pass
+
+        try:
+            lock_docs = db.collection("lease_locks").stream()
+            for doc in lock_docs:
+                doc.reference.delete()
         except Exception:
             pass
 

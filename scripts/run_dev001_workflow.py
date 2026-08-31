@@ -2,12 +2,19 @@
 
 import sys
 import json
+from pathlib import Path
+
+_repo_root = Path(__file__).resolve().parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
 from google.cloud import bigquery
 from google.cloud import firestore
 
 from config import settings
 from agents.pipeline import run_sentinel_workflow, _get_credentials
 from core.ledger import verify_chain
+from core.telemetry import generate_traceparent
 
 
 def main() -> int:
@@ -49,7 +56,11 @@ def main() -> int:
         "detected_at": d["detected_at"].isoformat(),
     }
 
-    traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    traceparent = generate_traceparent()
+    trace_id = traceparent.split("-")[1]
+
+    print(f"Traceparent:          {traceparent}")
+    print(f"Trace ID:             {trace_id}")
 
     print("\n[STEP 1/3] Executing Autonomous Multi-Agent Pipeline for DEV-001...")
     workflow_result = run_sentinel_workflow(
@@ -59,9 +70,13 @@ def main() -> int:
         cost_center="CC_LOGISTICS",
     )
 
+    trace_url = f"https://console.cloud.google.com/traces/explorer?project={settings.PROJECT_ID}&tid={trace_id}"
+
     print("\n[WORKFLOW RESULT SUMMARY]")
     print(f"  • Workflow Root ID:     {workflow_result.get('workflow_root_id')}")
     print(f"  • Status:               {workflow_result.get('status')}")
+    print(f"  • Trace ID:             {trace_id}")
+    print(f"  • Cloud Trace Console:  {trace_url}")
     print(f"  • Solver SHA-256:       {workflow_result.get('solver_sha256')}")
     print(f"  • Recommended Scenario: {workflow_result.get('recommended_scenario_id')}")
     print(f"  • OKF Policy Outcome:   {workflow_result.get('okf_outcome')}")

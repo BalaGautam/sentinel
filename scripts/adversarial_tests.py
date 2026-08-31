@@ -10,6 +10,7 @@ Unconditionally emits audit records across SENSE, SANITIZE, SCORE, POLICY, INTEN
 """
 
 import sys
+import threading
 import subprocess
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -259,9 +260,17 @@ def run_adversarial_tests() -> int:
     print("\n" + "=" * 70)
     print("TEST 4: Concurrent In-Flight Reservation Lease Race (I-4)")
     print("=" * 70)
-    print("Proving reserve-then-commit: 2 concurrent workflows against SUP-02 ($4,900 each, $7,500 ceiling)")
+    print("Proving reserve-then-commit: 2 genuinely concurrent threads against SUP-02 ($4,900 each, $7,500 ceiling)")
 
     governor._in_memory_reservations.clear()
+    if fs_client:
+        try:
+            for doc in fs_client.collection("reservations").stream(timeout=2.0):
+                doc.reference.delete()
+            for doc in fs_client.collection("lease_locks").stream(timeout=2.0):
+                doc.reference.delete()
+        except Exception:
+            pass
 
     # Define isolated test deviation & scenario for Test 4 ($4,900 on SKU-007 / SUP-02)
     dev_concur = Deviation(
@@ -295,69 +304,59 @@ def run_adversarial_tests() -> int:
         result_sha256="concur-test-sha256-hash",
     )
 
-    # Workflow A reserves $4,900 against SUP-02
-    print("\n[Workflow A - Evaluation & In-Flight Reservation]:")
-    dec_wf_a = governor.evaluate(
-        deviation=dev_concur,
-        scenario_set=scen_set_concur,
-        recommended_scenario=scen_concur,
-        supplier_id="SUP-02",
-        workflow_root_id="WF-CONCUR-A",
-        tenant="TENANT-CONCUR",
-    )
-    print(f"  • Workflow A Outcome:        {dec_wf_a.outcome}")
-    print(f"  • In-Flight Reservation ID:  {dec_wf_a.reservation_id}")
-    print(f"  • Status:                    HELD IN PENDING (Uncommitted)")
+    barrier = threading.Barrier(2)
+    thread_results: Dict[str, Any] = {}
 
-    # Workflow B evaluates concurrently BEFORE Workflow A settles/commits
-    print("\n[Workflow B - Concurrent Evaluation against SUP-02 while Lease A is Pending]:")
-    dec_wf_b1 = governor.evaluate(
-        deviation=dev_concur,
-        scenario_set=scen_set_concur,
-        recommended_scenario=scen_concur,
-        supplier_id="SUP-02",
-        workflow_root_id="WF-CONCUR-B",
-        tenant="TENANT-CONCUR",
-    )
-    b1_supplier_used = dec_wf_b1.counters_snapshot.get("supplier", {}).get("used", "0.00")
-    b1_supplier_projected = dec_wf_b1.counters_snapshot.get("supplier", {}).get("projected", "0.00")
-    print(f"  • Committed + In-Flight Spend: ${b1_supplier_used}")
-    print(f"  • Projected Spend:             ${b1_supplier_projected} (Ceiling: $7500.00)")
-    print(f"  • Workflow B Outcome:          {dec_wf_b1.outcome}")
-    print(f"  • Triggered Rules:             {dec_wf_b1.triggered_rules}")
+    def concurrent_worker(wf_id: str):
+        # Both threads block until ready, then hit reservation path at the same instant
+        barrier.wait()
+        decision = governor.evaluate(
+            deviation=dev_concur,
+            scenario_set=scen_set_concur,
+            recommended_scenario=scen_concur,
+            supplier_id="SUP-02",
+            workflow_root_id=wf_id,
+            tenant="TENANT-CONCUR",
+        )
+        thread_results[wf_id] = decision
 
-    # Case 3: Workflow A is released/aborted -> Workflow B subsequently retries and passes
-    print("\n[Workflow A - Reservation Released / Aborted]:")
-    governor.release_reservation(dec_wf_a.reservation_id)
-    print(f"  • Lease {dec_wf_a.reservation_id} released.")
+    t_a = threading.Thread(target=concurrent_worker, args=("WF-CONCUR-A",), name="Thread-WF-A")
+    t_b = threading.Thread(target=concurrent_worker, args=("WF-CONCUR-B",), name="Thread-WF-B")
 
-    print("\n[Workflow B - Subsequent Retry after Lease Release]:")
-    dec_wf_b2 = governor.evaluate(
-        deviation=dev_concur,
-        scenario_set=scen_set_concur,
-        recommended_scenario=scen_concur,
-        supplier_id="SUP-02",
-        workflow_root_id="WF-CONCUR-B",
-        tenant="TENANT-CONCUR",
-    )
-    b2_supplier_used = dec_wf_b2.counters_snapshot.get("supplier", {}).get("used", "0.00")
-    b2_supplier_projected = dec_wf_b2.counters_snapshot.get("supplier", {}).get("projected", "0.00")
-    print(f"  • Committed + In-Flight Spend: ${b2_supplier_used}")
-    print(f"  • Projected Spend:             ${b2_supplier_projected} (Ceiling: $7500.00)")
-    print(f"  • Workflow B Retry Outcome:    {dec_wf_b2.outcome}")
-    print(f"  • Triggered Rules:             {dec_wf_b2.triggered_rules}")
+    t_a.start()
+    t_b.start()
+    t_a.join()
+    t_b.join()
 
-    t4_ok = (
-        dec_wf_a.outcome == "AUTO_HEAL"
-        and dec_wf_b1.outcome == "REQUIRE_HITL"
-        and any("VELOCITY_CAP" in r for r in dec_wf_b1.triggered_rules)
-        and dec_wf_b2.outcome == "AUTO_HEAL"
-    )
+    dec_wf_a = thread_results["WF-CONCUR-A"]
+    dec_wf_b = thread_results["WF-CONCUR-B"]
+
+    print("\n[Concurrent Execution Results]:")
+    print(f"  • Workflow A ({dec_wf_a.outcome}): lease={dec_wf_a.reservation_id}, rules={dec_wf_a.triggered_rules}")
+    print(f"  • Workflow B ({dec_wf_b.outcome}): lease={dec_wf_b.reservation_id}, rules={dec_wf_b.triggered_rules}")
+
+    auto_heal_count = (1 if dec_wf_a.outcome == "AUTO_HEAL" else 0) + (1 if dec_wf_b.outcome == "AUTO_HEAL" else 0)
+    hitl_count = (1 if dec_wf_a.outcome == "REQUIRE_HITL" else 0) + (1 if dec_wf_b.outcome == "REQUIRE_HITL" else 0)
+
+    # Assert exactly one winner and exactly one blocked
+    if auto_heal_count == 2:
+        print("\nFATAL RACE CONDITION: Both concurrent workflows passed ($9,800 committed against $7,500 ceiling)!", file=sys.stderr)
+        t4_ok = False
+    elif auto_heal_count == 1 and hitl_count == 1:
+        winner = "Workflow A" if dec_wf_a.outcome == "AUTO_HEAL" else "Workflow B"
+        loser_dec = dec_wf_b if dec_wf_a.outcome == "AUTO_HEAL" else dec_wf_a
+        winner_dec = dec_wf_a if dec_wf_a.outcome == "AUTO_HEAL" else dec_wf_b
+        print(f"\n  • Winner: {winner} (Reserved $4,900 lease: {winner_dec.reservation_id})")
+        print(f"  • Blocked: Tripped {[r for r in loser_dec.triggered_rules]}")
+        t4_ok = any("VELOCITY_CAP" in r for r in loser_dec.triggered_rules)
+    else:
+        print(f"\nUnexpected concurrency state: auto_heal={auto_heal_count}, hitl={hitl_count}", file=sys.stderr)
+        t4_ok = False
 
     if t4_ok:
-        print("\n>>> TEST 4 RESULT: PASS [In-flight lease blocked concurrent breach; release unblocked retry]")
+        print("\n>>> TEST 4 RESULT: PASS [Genuine concurrency verified: exactly 1 winner, exactly 1 blocked]")
     else:
-        print("\n>>> TEST 4 RESULT: FAIL [Concurrent lease isolation failed]", file=sys.stderr)
+        print("\n>>> TEST 4 RESULT: FAIL [Concurrency race condition failure]", file=sys.stderr)
         all_passed = False
 
     # -------------------------------------------------------------------------

@@ -184,17 +184,32 @@ def append_ledger_record(
     }
 
     table_ref = f"{bq_client.project}.{dataset_id}.audit_ledger"
-    try:
-        errors = bq_client.insert_rows_json(table_ref, [row])
-        if errors:
-            raise RuntimeError(f"Failed to append audit ledger record: {errors}")
-    except Exception:
-        job_config = bigquery.LoadJobConfig(
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
-        )
-        job = bq_client.load_table_from_json([row], table_ref, job_config=job_config)
-        job.result()
+    inserted = False
+    last_err = None
+    for attempt in range(3):
+        try:
+            errors = bq_client.insert_rows_json(table_ref, [row])
+            if not errors:
+                inserted = True
+                break
+        except Exception as e:
+            last_err = e
+        try:
+            job_config = bigquery.LoadJobConfig(
+                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+                create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
+            )
+            job = bq_client.load_table_from_json([row], table_ref, job_config=job_config)
+            job.result()
+            inserted = True
+            break
+        except Exception as e:
+            last_err = e
+            import time
+            time.sleep(0.5)
+
+    if not inserted and last_err:
+        raise RuntimeError(f"Failed to append audit ledger record after 3 attempts: {last_err}")
 
     return LedgerRecord(
         record_id=record_id,
