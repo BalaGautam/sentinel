@@ -3,3 +3,7 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+SENTINEL_BUILD_BRIEF.md
+SENTINEL_BUILD_BRIEF*.md
+SENTINEL_WORK_SESSION_NOTES.md
+

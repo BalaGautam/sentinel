@@ -10,7 +10,7 @@ Built on Google ADK · Gemini 3.7 Flash (Vertex AI) · Cloud Run · Pub/Sub · B
 
 Build write-up: [link] · #AllThingsAgenticHackathon
 
-![Architecture](docs/architecture.svg)
+![Architecture](docs/architecture.png)
 
 The three ADK agents are registered in Google Cloud Agent Registry as A2A agents in us-central1, with skills indexed for cross-department discovery. The Vertex AI Memory Bank instance auto-registers alongside them, giving four Sentinel entries in one governance catalog. A BigQuery mirror feeds the analytics views.
 

@@ -2,7 +2,7 @@
   <rect width="1240" height="720" fill="#FFFFFF"/>
 
   <text x="40" y="44" font-size="25" font-weight="700" fill="#0F172A">Project Sentinel — Fortified Enterprise Fleet</text>
-  <text x="40" y="68" font-size="14" fill="#64748B">Autonomous demand management · Gemini 3.7 Flash · Google ADK · Cloud Run · BigQuery</text>
+  <text x="40" y="68" font-size="14" fill="#64748B">Gemini 3.7 Flash · Google ADK · Cloud Run · Pub/Sub · BigQuery · Firestore · Memory Bank · Agent Registry · Cloud Trace</text>
 
   <!-- legend -->
   <rect x="880" y="30" width="14" height="14" rx="3" fill="#DBEAFE" stroke="#2563EB"/>
@@ -68,9 +68,9 @@
   <text x="541" y="322" font-size="11.5" fill="#1E40AF">lead times · tariffs</text>
 
   <rect x="750" y="266" width="200" height="66" rx="8" fill="#F1F5F9" stroke="#94A3B8"/>
-  <text x="766" y="290" font-size="13.5" font-weight="700" fill="#0F172A">Computed memory</text>
-  <text x="766" y="308" font-size="11.5" fill="#475569">90-day supplier reliability</text>
-  <text x="766" y="322" font-size="11.5" fill="#475569">provenance = computed</text>
+  <text x="766" y="290" font-size="13.5" font-weight="700" fill="#0F172A">Vertex AI Memory Bank</text>
+  <text x="766" y="308" font-size="11.5" fill="#475569">12 suppliers · 90-day reliability</text>
+  <text x="766" y="322" font-size="11.5" fill="#475569">computed only (I-8)</text>
 
   <!-- I-1 boundary -->
   <line x1="40" y1="372" x2="1200" y2="372" stroke="#16A34A" stroke-width="2" stroke-dasharray="7 4"/>
@@ -135,7 +135,7 @@
   <!-- base -->
   <rect x="40" y="656" width="1160" height="48" rx="8" fill="#F1F5F9" stroke="#94A3B8"/>
   <text x="56" y="678" font-size="13.5" font-weight="700" fill="#0F172A">BigQuery (us-central1) — system of record</text>
-  <text x="56" y="695" font-size="11.5" fill="#475569">tamper-evident hash-chained audit_ledger · scenario_library · spend_transactions · okf_policy · agent_registry · 6 analytical views</text>
-  <text x="900" y="678" font-size="11.5" fill="#475569">OpenTelemetry spans</text>
-  <text x="900" y="695" font-size="11.5" fill="#475569">Firestore: leases + kill switch</text>
+  <text x="56" y="695" font-size="11.5" fill="#475569">tamper-evident hash-chained audit_ledger · okf_policy (versioned) · scenario_library · spend_transactions · 7 analytical views</text>
+  <text x="880" y="678" font-size="11.5" fill="#475569">Agent Registry: 4 A2A agents, skills indexed</text>
+  <text x="880" y="695" font-size="11.5" fill="#475569">OpenTelemetry → Cloud Trace · Firestore: leases + kill switch</text>
 </svg>
