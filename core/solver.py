@@ -451,12 +451,34 @@ def load_deviation_from_bq(
 def write_scenarios_to_bq(
     bq_client: bigquery.Client, dataset_id: str, scenario_set: ScenarioSet
 ) -> None:
-    """Write every scenario to scenario_library BigQuery table and log SCORE to audit ledger (§8.1, I-10)."""
+    """Write every scenario to scenario_library BigQuery table with deduplication on scenario_id (§8.1, I-10)."""
     table_ref = f"{bq_client.project}.{dataset_id}.scenario_library"
+    scen_ids = [s.scenario_id for s in scenario_set.scenarios]
+
+    # Query existing scenario_ids to enforce deduplication
+    existing_scenarios = set()
+    if scen_ids:
+        check_query = f"""
+        SELECT scenario_id FROM `{table_ref}`
+        WHERE scenario_id IN UNNEST(@scen_ids)
+        """
+        job_config_check = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ArrayQueryParameter("scen_ids", "STRING", scen_ids)]
+        )
+        try:
+            existing_scenarios = {
+                r["scenario_id"]
+                for r in bq_client.query(check_query, job_config=job_config_check).result()
+            }
+        except Exception:
+            existing_scenarios = set()
+
     rows_to_insert = []
     now_iso = datetime.now(timezone.utc).isoformat()
 
     for s in scenario_set.scenarios:
+        if s.scenario_id in existing_scenarios:
+            continue
         rows_to_insert.append({
             "scenario_id": s.scenario_id,
             "deviation_id": scenario_set.deviation_id,
@@ -472,17 +494,18 @@ def write_scenarios_to_bq(
             "created_at": now_iso,
         })
 
-    try:
-        errors = bq_client.insert_rows_json(table_ref, rows_to_insert)
-        if errors:
-            raise RuntimeError(f"Failed writing scenarios to {table_ref}: {errors}")
-    except Exception:
-        job_config = bigquery.LoadJobConfig(
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
-        )
-        job = bq_client.load_table_from_json(rows_to_insert, table_ref, job_config=job_config)
-        job.result()
+    if rows_to_insert:
+        try:
+            errors = bq_client.insert_rows_json(table_ref, rows_to_insert)
+            if errors:
+                raise RuntimeError(f"Failed writing scenarios to {table_ref}: {errors}")
+        except Exception:
+            job_config = bigquery.LoadJobConfig(
+                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+                create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
+            )
+            job = bq_client.load_table_from_json(rows_to_insert, table_ref, job_config=job_config)
+            job.result()
 
     # Emit SCORE record into audit ledger per I-10
     try:

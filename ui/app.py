@@ -140,6 +140,15 @@ with st.sidebar:
     st.markdown(f"**Dataset:** `{settings.BQ_DATASET}`")
 
     st.divider()
+    if st.button("🔄 Reset Demo State", use_container_width=True, help="Reset dynamic tables, Firestore leases, and OKF spend counters"):
+        with st.spinner("Resetting demo state..."):
+            from scripts.reset_demo import reset_demo_state
+            reset_demo_state(bq_client, fs_client)
+            st.session_state.clear()
+            st.success("✅ Demo state reset complete. All spend counters at 0%.")
+            st.rerun()
+
+    st.divider()
     st.markdown("**Ledger Integrity (I-6)**")
     try:
         ok, broken_at, rec_count = verify_chain(bq_client, settings.BQ_DATASET)
@@ -148,7 +157,7 @@ with st.sidebar:
             st.caption("Status: 100% Tamper-Evident")
         else:
             st.error(f"⚠️ Check Failed: {broken_at}")
-    except Exception as e:
+    except Exception:
         st.info("Ledger initializing...")
 
     st.divider()
@@ -214,7 +223,7 @@ if app_mode == "Deviation Triage & Remediation":
         st.code(dev_obj.raw_note)
 
     # Execute workflow when triggered
-    if run_button or "current_workflow_result" not in st.session_state or st.session_state.get("current_dev_id") != dev_id:
+    if run_button:
         with st.spinner("Executing Autonomous Fleet Pipeline (Hygiene -> Sourcing -> MILP Solver -> OKF Governor)..."):
             payload = {
                 "deviation_id": dev_obj.deviation_id,
@@ -228,10 +237,13 @@ if app_mode == "Deviation Triage & Remediation":
                 "detected_at": dev_obj.detected_at.isoformat(),
             }
             res = run_sentinel_workflow(payload, tenant="SENTINEL_CORP", cost_center="CC_LOGISTICS")
-            st.session_state["current_workflow_result"] = res
+            st.session_state[f"workflow_{dev_id}"] = res
             st.session_state["current_dev_id"] = dev_id
 
-    wf_res = st.session_state.get("current_workflow_result", {})
+    wf_res = st.session_state.get(f"workflow_{dev_id}")
+    if not wf_res:
+        st.info("💡 Select an inbound deviation and click **'🚀 Run Fleet Triage'** to execute the multi-agent pipeline.")
+        st.stop()
 
     if wf_res.get("status") == "BLOCKED_BY_GUARDRAIL":
         st.error(f"🛑 **Ingress Guardrail Tripped**: Inbound payload blocked per I-12. Reason: {wf_res.get('reason')}")
@@ -291,7 +303,7 @@ if app_mode == "Deviation Triage & Remediation":
             is_recommended = (sc.scenario_id == rec_id)
             with scenario_cols[idx]:
                 card_class = "scenario-card-recommended" if is_recommended else "scenario-card-standard"
-                border_badge = "⭐ **RECOMMENDED BY SOLVER**" if is_recommended else f"**Option {idx+1}**"
+                border_badge = "⭐ <strong>RECOMMENDED BY SOLVER</strong>" if is_recommended else f"<strong>Option {idx+1}</strong>"
 
                 st.markdown(
                     f"""
@@ -467,8 +479,12 @@ elif app_mode == "Analytical Views (§6.3 Dashboard)":
         try:
             df3 = bq_client.query(f"SELECT * FROM `{settings.PROJECT_ID}.{settings.BQ_DATASET}.v_scenario_impact_map`").to_dataframe()
             if not df3.empty:
+                df3["total_cost_usd"] = pd.to_numeric(df3["total_cost_usd"], errors="coerce")
+                df3["days_to_coverage"] = pd.to_numeric(df3["days_to_coverage"], errors="coerce")
+                df3["sla_penalty_usd"] = pd.to_numeric(df3["sla_penalty_usd"], errors="coerce")
+                df3["total_exposure_usd"] = pd.to_numeric(df3["total_exposure_usd"], errors="coerce")
                 scatter = alt.Chart(df3).mark_circle(size=120).encode(
-                    x=alt.X("total_cost_usd:Q", title="Total Cost ($USD)"),
+                    x=alt.X("total_cost_usd:Q", title="Total Cost ($USD)", scale=alt.Scale(zero=False)),
                     y=alt.Y("days_to_coverage:Q", title="Days to Coverage"),
                     color=alt.Color("scenario_label:N", title="Scenario Mode"),
                     tooltip=["scenario_id", "scenario_label", "total_cost_usd", "days_to_coverage", "total_exposure_usd"],

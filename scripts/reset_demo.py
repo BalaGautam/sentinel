@@ -228,6 +228,18 @@ def clear_firestore_leases_and_killswitch(db: firestore.Client) -> Dict[str, any
             merge=True,
         )
 
+        # 5. Reset Firestore ledger head to GENESIS (§8.3)
+        try:
+            head_ref = db.collection("governance").document("ledger_head")
+            head_ref.set({
+                "head_hash": "GENESIS",
+                "prev_hash": "GENESIS",
+                "record_id": "GENESIS",
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            pass
+
         return {
             "status": "CLEARED",
             "deleted_reservations": deleted_reservations,
@@ -248,6 +260,21 @@ def clear_firestore_leases_and_killswitch(db: firestore.Client) -> Dict[str, any
                 "kill_switch": False,
             }
         raise e
+
+
+def reset_demo_state(bq_client: bigquery.Client, fs_client: Optional[firestore.Client] = None) -> Dict[str, Any]:
+    """Programmatic entry point for resetting demo state from Streamlit UI or scripts."""
+    bq_counts = reset_bigquery_tables(bq_client, settings.BQ_DATASET)
+    fs_res = {}
+    if fs_client is not None:
+        try:
+            fs_res = clear_firestore_leases_and_killswitch(fs_client)
+        except Exception as e:
+            fs_res = {"error": str(e)}
+    return {
+        "bq_counts": bq_counts,
+        "fs_result": fs_res,
+    }
 
 
 def reset_demo() -> int:

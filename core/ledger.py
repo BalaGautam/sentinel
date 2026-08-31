@@ -19,6 +19,7 @@ import google.auth
 from google.auth.exceptions import RefreshError, DefaultCredentialsError
 from google.oauth2 import credentials
 from google.cloud import bigquery
+from google.cloud import firestore
 
 from config import settings
 from contracts.models import LedgerRecord
@@ -43,6 +44,23 @@ def _get_credentials():
         except Exception:
             pass
         return None
+
+
+_fs_client_cache: Optional[firestore.Client] = None
+
+
+def get_firestore_client(project_id: Optional[str] = None) -> Optional[firestore.Client]:
+    """Return a cached singleton Firestore client instance."""
+    global _fs_client_cache
+    if _fs_client_cache is None:
+        try:
+            creds = _get_credentials()
+            proj = project_id or settings.PROJECT_ID
+            _fs_client_cache = firestore.Client(project=proj, credentials=creds)
+        except Exception as e:
+            print(f"Warning: Could not initialize Firestore client: {e}", file=sys.stderr)
+            _fs_client_cache = None
+    return _fs_client_cache
 
 
 def get_latest_record_hash(bq_client: bigquery.Client, dataset_id: str) -> str:
@@ -71,6 +89,53 @@ def compute_record_hash(prev_record_hash: str, payload: Dict[str, Any]) -> Tuple
     return payload_sha256, record_hash
 
 
+def _linearize_ledger_head(
+    fs_client: Optional[firestore.Client],
+    bq_client: bigquery.Client,
+    dataset_id: str,
+    record_id: str,
+    payload: Dict[str, Any],
+) -> Tuple[str, str, str]:
+    """Linearize hash chain updates via Firestore transactional lock (§8.3).
+
+    Returns:
+        (prev_hash, payload_sha256, record_hash)
+    """
+    client = fs_client or get_firestore_client(bq_client.project)
+    if client is not None:
+        try:
+            head_ref = client.collection("governance").document("ledger_head")
+            transaction = client.transaction()
+
+            @firestore.transactional
+            def _txn_step(txn):
+                snapshot = head_ref.get(transaction=txn)
+                if snapshot.exists and snapshot.to_dict() and "head_hash" in snapshot.to_dict():
+                    prev_hash = snapshot.get("head_hash")
+                else:
+                    prev_hash = get_latest_record_hash(bq_client, dataset_id)
+
+                payload_sha256, rec_hash = compute_record_hash(prev_hash, payload)
+                txn.set(
+                    head_ref,
+                    {
+                        "head_hash": rec_hash,
+                        "prev_hash": prev_hash,
+                        "record_id": record_id,
+                        "updated_at": firestore.SERVER_TIMESTAMP,
+                    },
+                )
+                return prev_hash, payload_sha256, rec_hash
+
+            return _txn_step(transaction)
+        except Exception as e:
+            print(f"Warning: Firestore ledger head transaction fallback: {e}", file=sys.stderr)
+
+    prev_hash = get_latest_record_hash(bq_client, dataset_id)
+    payload_sha256, rec_hash = compute_record_hash(prev_hash, payload)
+    return prev_hash, payload_sha256, rec_hash
+
+
 def append_ledger_record(
     bq_client: bigquery.Client,
     dataset_id: str,
@@ -84,12 +149,20 @@ def append_ledger_record(
     operator_sub: Optional[str] = None,
     operator_jti: Optional[str] = None,
     approval_signature: Optional[str] = None,
+    fs_client: Optional[firestore.Client] = None,
 ) -> LedgerRecord:
-    """Append a hash-chained record to the audit ledger (§8.3)."""
-    prev_hash = get_latest_record_hash(bq_client, dataset_id)
-    payload_sha256, record_hash = compute_record_hash(prev_hash, payload)
+    """Append a hash-chained record to the audit ledger with Firestore head linearization (§8.3)."""
+    import uuid
+    record_id = f"REC-{hashlib.sha256(f'{deviation_id}{phase}{datetime.now().isoformat()}{uuid.uuid4().hex}'.encode()).hexdigest()[:12].upper()}"
 
-    record_id = f"REC-{hashlib.sha256(f'{deviation_id}{phase}{datetime.now().isoformat()}'.encode()).hexdigest()[:12].upper()}"
+    prev_hash, payload_sha256, record_hash = _linearize_ledger_head(
+        fs_client=fs_client,
+        bq_client=bq_client,
+        dataset_id=dataset_id,
+        record_id=record_id,
+        payload=payload,
+    )
+
     now_dt = datetime.now(timezone.utc)
     now_iso = now_dt.isoformat()
 
