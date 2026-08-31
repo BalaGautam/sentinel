@@ -37,8 +37,8 @@ from contracts.models import Deviation, SupplyOption, Scenario, ScenarioSet
 # Scenario Mode Mapping (§8.1)
 SCENARIO_MODES: Dict[str, set] = {
     "STATUS_QUO": {"CONTRACT"},
-    "AIR_EXPEDITE": {"CONTRACT", "SPOT", "AIR_EXPEDITE"},
-    "LINE_REBALANCE": {"CONTRACT", "DC_REBALANCE"},
+    "AIR_EXPEDITE": {"AIR_EXPEDITE", "SPOT"},
+    "LINE_REBALANCE": {"DC_REBALANCE", "LINE_REBALANCE"},
 }
 
 MAX_SUPPLY_OPTIONS: int = 25
