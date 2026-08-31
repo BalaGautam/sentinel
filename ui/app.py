@@ -450,9 +450,9 @@ if app_mode == "Deviation Triage & Remediation":
 
         appr_col1, appr_col2 = st.columns([1.5, 1])
         with appr_col1:
-            op_name = st.text_input("Operator Name", value="Elena Rostova")
-            op_email = st.text_input("Operator Email", value="e.rostova@sentinel-corp.internal")
-            op_role = st.selectbox("Authorized Role", ["VP Supply Chain Operations", "Chief Procurement Officer", "Logistics Director"])
+            op_name = st.text_input("Operator Name", value="Bala Gautam")
+            op_email = st.text_input("Operator Email", value="bala.gautam@sentinel-corp.internal")
+            op_role = st.selectbox("Authorized Role", ["Director, Supply Chain", "VP Supply Chain Operations", "Chief Procurement Officer", "Logistics Director"])
             op_sub = "usr-op-7842"
 
         with appr_col2:

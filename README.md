@@ -8,6 +8,8 @@ tamper-evident audit ledger.
 
 Built on Google ADK · Gemini 3.7 Flash (Vertex AI) · Cloud Run · Pub/Sub · BigQuery · Firestore · OR-Tools
 
+Build write-up: [link] · #AllThingsAgenticHackathon
+
 ![Architecture](docs/architecture.svg)
 
 The three ADK agents are registered in Google Cloud Agent Registry as A2A agents in us-central1, with skills indexed for cross-department discovery. The Vertex AI Memory Bank instance auto-registers alongside them, giving four Sentinel entries in one governance catalog. A BigQuery mirror feeds the analytics views.
@@ -263,6 +265,7 @@ Stated plainly, because a claim we cannot demonstrate is worth less than an hone
 - **The concurrency test is multi-threaded within a single process**, not multi-instance. The Firestore transaction provides distributed safety; the test validates it under genuine thread contention (10/10 runs, exactly one winner), but does not exercise multiple Cloud Run instances.
 - **A2A discovery endpoints are not externally verified.** The three agents are registered in Agent Registry with A2A cards, indexed skills, and Cloud Run endpoint URLs. The service exposes discovery routes for each agent, validated by local tests, but runs with internal-only ingress so the routes were not confirmed against the public endpoint.
 - **Approvals are HMAC-signed, not OIDC-signed.** The HMAC proves payload integrity; operator identity is supplied rather than authenticated.
+- **The seeded dataset is deliberately small** — 40 SKUs, 12 suppliers, 200 delivery records — to keep the demo reproducible and cloud costs near zero. BigQuery, Cloud Run and Pub/Sub scale horizontally, but throughput at enterprise volume has not been tested.
 - **All data is synthetic**, generated for this submission.
 
 ---
