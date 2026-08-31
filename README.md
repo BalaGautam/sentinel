@@ -90,7 +90,8 @@ with a key from the environment; the signature is persisted in the ledger as an 
 
 **I-8 — Memory is computed, never authored.** `supplier_reliability` is aggregated by SQL over
 `delivery_history`; every record carries `provenance="computed"`. No LLM-generated text enters
-memory, which closes slow memory-poisoning.
+memory, which closes slow memory-poisoning. Memories are stored in Vertex AI Memory Bank, scoped
+by supplier_id, with BigQuery as a logged fallback.
 
 **I-9 — Healing actions are idempotent.** `SHA256(deviation_id + sku_id + option_id)`. Pub/Sub is
 at-least-once; a redelivered event must not cut a second order.
@@ -260,7 +261,6 @@ Stated plainly, because a claim we cannot demonstrate is worth less than an hone
 
 - **The ERP integration is an idempotent stub**, not a live connector.
 - **Agent Registry is a BigQuery table with versioned manifests**, not the GEAP Agent Registry.
-- **Memory is a BigQuery table**, not Vertex AI Memory Bank. It is persistent state — persistence is not memory, and we do not call it a Memory Bank.
 - **The guardrail is a deterministic pattern pre-filter**, not Model Armor and not an ML classifier. It blocks the injection class we test for; it is not a general-purpose defense.
 - **No A2UI adapter** — the UI is Streamlit only.
 - **No Data Engineering Agent.** `sentinel_raw.asn_landing` contains the seeded defect classes and `v_feed_quality` detects them, but no agent-built repair pipeline runs. The view reports raw-feed defect detection, not pipeline repair output.
@@ -272,10 +272,10 @@ Stated plainly, because a claim we cannot demonstrate is worth less than an hone
 
 ## What we'd build next
 
-Vertex AI Memory Bank and the GEAP Agent Registry as first-class components · a Gemma-based
-guardrail classifier alongside the pattern filter · Cloud Trace export · the BigQuery Data
-Engineering Agent authoring the repair pipeline as versioned Dataform SQLX · a Conversational
-Analytics data agent over the six views · a real ERP connector · multi-tier BOM traversal.
+The GEAP Agent Registry as a first-class component · a Gemma-based guardrail classifier
+alongside the pattern filter · the BigQuery Data Engineering Agent authoring the repair pipeline
+as versioned Dataform SQLX · a Conversational Analytics data agent over the six views · a real
+ERP connector · multi-tier BOM traversal.
 
 ---
 

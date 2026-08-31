@@ -28,7 +28,28 @@ def create_triage_orchestrator_tools(bq_client: bigquery.Client, dataset_id: str
     """Create tool callables wired with egress guardrail sanitization (I-12)."""
 
     def memory_read(supplier_id: str) -> str:
-        """Read computed supplier reliability metrics from BigQuery."""
+        """Read computed supplier reliability metrics from Vertex AI Memory Bank, with BigQuery fallback (I-8)."""
+        import sys
+        from core.memory import read_supplier_reliability_memory
+
+        # 1. Primary: Vertex AI Memory Bank (I-8)
+        mem_data = read_supplier_reliability_memory(supplier_id)
+        if mem_data:
+            print(f"[Memory Bank Read] Retrieved reliability for {supplier_id} from Vertex AI Memory Bank: {mem_data}", file=sys.stderr)
+            raw_res = json.dumps({
+                "supplier_id": mem_data["supplier_id"],
+                "on_time_rate_90d": mem_data["on_time_rate_90d"],
+                "avg_lead_time_drift_days": mem_data["avg_lead_time_drift_days"],
+                "quote_variance_rate": mem_data["quote_variance_rate"],
+                "sample_size": mem_data["sample_size"],
+                "provenance": mem_data.get("provenance", "computed"),
+                "source": "VERTEX_AI_MEMORY_BANK",
+            })
+            sanitized = sanitize(raw_res, direction="egress")
+            return sanitized.clean_text
+
+        # 2. Fallback: BigQuery supplier_reliability table
+        print(f"[Memory Read Warning] Vertex AI Memory Bank unavailable for {supplier_id}. Triggering BigQuery fallback...", file=sys.stderr)
         query = f"""
         SELECT supplier_id, on_time_rate_90d, avg_lead_time_drift_days, quote_variance_rate, sample_size, provenance
         FROM `{bq_client.project}.{dataset_id}.supplier_reliability`
@@ -49,11 +70,12 @@ def create_triage_orchestrator_tools(bq_client: bigquery.Client, dataset_id: str
                     "quote_variance_rate": float(r["quote_variance_rate"]) if r["quote_variance_rate"] is not None else 0.0,
                     "sample_size": r["sample_size"],
                     "provenance": r["provenance"],
+                    "source": "BIGQUERY_FALLBACK",
                 })
             else:
                 raw_res = f"Supplier {supplier_id} not found in reliability records."
         except Exception as e:
-            raw_res = f"Error reading supplier reliability: {e}"
+            raw_res = f"Error reading supplier reliability from BigQuery fallback: {e}"
 
         # Egress sanitization (I-12)
         sanitized = sanitize(raw_res, direction="egress")
@@ -184,18 +206,30 @@ class TriageOrchestrator:
         # 3. Write scenarios to BigQuery scenario_library + log SCORE to audit_ledger (§8.1, I-10)
         write_scenarios_to_bq(self.bq_client, self.dataset_id, scenario_set)
 
-        # 4. Retrieve qualitative supplier context
+        # 4. Retrieve qualitative supplier context from Memory Bank (I-8)
         rec_scenario = next(
             s for s in scenario_set.scenarios if s.scenario_id == scenario_set.recommended_scenario_id
         )
         selected_mode = rec_scenario.label
 
-        # 4. Generate structured OrchestratorNarrative (enforcing I-1)
+        supplier_id = "SUP-11"
+        if rec_scenario.selected and "option_id" in rec_scenario.selected[0]:
+            opt_id = rec_scenario.selected[0]["option_id"]
+            matched_opts = [o for o in options if o.option_id == opt_id]
+            if matched_opts:
+                supplier_id = matched_opts[0].supplier_id
+
+        # Query supplier reliability memory from Vertex AI Memory Bank (I-8)
+        memory_read_fn, _ = create_triage_orchestrator_tools(self.bq_client, self.dataset_id)
+        supplier_reliability_context = memory_read_fn(supplier_id)
+
+        # 5. Generate structured OrchestratorNarrative (enforcing I-1)
         prompt = (
             f"Synthesize an operational mitigation narrative and risk summary for deviation "
             f"'{deviation.deviation_id}' affecting SKU '{deviation.sku_id}' at facility '{deviation.dc_id}'. "
-            f"The deterministic solver selected strategy '{selected_mode}'. "
+            f"The deterministic solver selected strategy '{selected_mode}' for supplier '{supplier_id}'. "
             f"Inbound note context: '{deviation.raw_note}'. "
+            f"Supplier reliability context: '{supplier_reliability_context}'. "
             f"CRITICAL REQUIREMENT (Invariant I-1): Your response must be strictly qualitative text in "
             f"the fields 'narrative' and 'risk_summary'. Do NOT include any numeric values or currency amounts."
         )
