@@ -141,7 +141,7 @@ st.markdown(
 )
 
 
-@st.cache_resource
+@st.cache_resource(ttl=1800)
 def get_clients():
     creds = _get_credentials()
     bq = bigquery.Client(project=settings.PROJECT_ID, location=settings.GCP_REGION, credentials=creds)
