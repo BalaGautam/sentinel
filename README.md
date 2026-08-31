@@ -8,7 +8,7 @@ tamper-evident audit ledger.
 
 Built on Google ADK · Gemini 3.7 Flash (Vertex AI) · Cloud Run · Pub/Sub · BigQuery · Firestore · OR-Tools
 
-Build write-up: [link] · #AllThingsAgenticHackathon
+Build write-up: [The AI Invented a Purchase Order](https://medium.com/@balaprague/the-ai-invented-a-purchase-order-a9ae0dcf61a6) · #AllThingsAgenticHackathon
 
 ![Architecture](docs/architecture.png)
 
@@ -41,7 +41,7 @@ minutes — so the routine ones consume the capacity the dangerous ones need.
 | **SCENARIO** | The triage orchestrator gathers supply options, exposed orders, and 90-day supplier reliability |
 | **SCORE** | OR-Tools MILP generates three costed mitigation scenarios — deterministically, with no LLM involvement |
 | **HEAL** | The OKF Policy Governor either executes the action autonomously or escalates it for signed human approval |
-| **ASK** | Six analytical views over the fleet's own decision record |
+| **ASK** | Seven analytical views over the fleet's own decision record |
 
 ---
 
@@ -56,9 +56,8 @@ Four seeded deviations, each landing on a different governance path:
 | **DEV-003a/b/c** | Three × $4,900 against one supplier | First clears; second trips **VELOCITY_CAP** |
 | **DEV-004** | 500 units, Tier-1 customer exposed | **REQUIRE_HITL** — signed operator approval |
 
-DEV-001 is worth a closer look. The cheapest *purchase* is $3,950 (status quo), but it carries a
-$620 SLA penalty and takes 5 days. The solver selects a $1,275 line rebalance at 2 days — cheaper
-*and* faster once total exposure is computed. Lowest sticker price is not the right answer.
+DEV-001 is worth a closer look. The cheapest *purchase* is STATUS_QUO at $3,950 cost, but adding a $620 SLA penalty brings total exposure to $4,570 over 5 days. AIR_EXPEDITE delivers in 1 day for $6,000. The solver recommends LINE_REBALANCE at $1,275 and 2 days — cheaper *and* faster once total exposure is computed. Lowest sticker price is not the right answer.
+
 
 ---
 
@@ -141,8 +140,8 @@ it was judged against, so any decision can be replayed against the rules in forc
 Core data and compute are pinned to `us-central1` (BigQuery, Cloud Run, Pub/Sub, Firestore).
 Model inference routes via Vertex AI `global` for Gemini 3.7 Flash.
 
-We do not claim data sovereignty. Data at rest is single-region; inference routing is global.
-Gemini 3.5 Flash was unavailable in our regions, so we run 3.7 Flash — which clears the "Gemini
+I do not claim data sovereignty. Data at rest is single-region; inference routing is global.
+Gemini 3.5 Flash was unavailable in my region, so I run 3.7 Flash — which clears the "Gemini
 3.5 or newer" requirement — and state the topology precisely rather than overclaiming.
 
 ---
@@ -218,7 +217,7 @@ services/        orchestrator_service.py — Cloud Run Pub/Sub push handler
 sql/             ddl.sql · seed.sql · views.sql
 scripts/         preflight · reset_demo · adversarial_tests · publish_deviation · seed_registry
 ui/              app.py — Streamlit cockpit
-tests/           test_model_pinning.py
+tests/           test_model_pinning.py · test_telemetry.py · test_a2a_discovery.py
 ```
 
 **Start with `core/solver.py` and `contracts/models.py`** — together they show why no
@@ -226,7 +225,7 @@ LLM-generated number can reach a purchase order.
 
 ---
 
-## Insights and things we're proud of
+## Insights and things I'm proud of
 
 **LLMs must be architecturally excluded from arithmetic, not instructed to be careful.** An
 early build had the orchestrator inventing an option ID that didn't exist and a price the solver
@@ -246,7 +245,7 @@ Hash-chaining makes tampering detectable, which is an honest and provable proper
 **The idempotency trap is real.** Pub/Sub is at-least-once. Without a deterministic idempotency
 key, a redelivered disruption event cuts a second purchase order.
 
-**Debugging distributed writers is harder than debugging logic.** Our hash chain appeared broken
+**Debugging distributed writers is harder than debugging logic.** My hash chain appeared broken
 for hours. The chain code was correct — a stale Pub/Sub push subscription was still delivering
 retries to Cloud Run, which wrote to the same ledger concurrently with local runs. Two
 uncoordinated writers fork a chain. The fix was deleting a subscription, not changing a line of
@@ -256,10 +255,10 @@ code.
 
 ## Known limitations
 
-Stated plainly, because a claim we cannot demonstrate is worth less than an honest gap.
+Stated plainly, because a claim I cannot demonstrate is worth less than an honest gap.
 
 - **The ERP integration is an idempotent stub**, not a live connector.
-- **The guardrail is a deterministic pattern pre-filter**, not Model Armor and not an ML classifier. It blocks the injection class we test for; it is not a general-purpose defense.
+- **The guardrail is a deterministic pattern pre-filter**, not Model Armor and not an ML classifier. It blocks the injection class I test for; it is not a general-purpose defense.
 - **No A2UI adapter** — the UI is Streamlit only.
 - **No Data Engineering Agent.** `sentinel_raw.asn_landing` contains the seeded defect classes and `v_feed_quality` detects them, but no agent-built repair pipeline runs. The view reports raw-feed defect detection, not pipeline repair output.
 - **The concurrency test is multi-threaded within a single process**, not multi-instance. The Firestore transaction provides distributed safety; the test validates it under genuine thread contention (10/10 runs, exactly one winner), but does not exercise multiple Cloud Run instances.
@@ -270,11 +269,11 @@ Stated plainly, because a claim we cannot demonstrate is worth less than an hone
 
 ---
 
-## What we'd build next
+## What I'd build next
 
 A Gemma-based guardrail classifier alongside the pattern filter · the BigQuery Data
 Engineering Agent authoring the repair pipeline as versioned Dataform SQLX · a Conversational
-Analytics data agent over the six views · a real ERP connector · multi-tier BOM traversal.
+Analytics data agent over the seven views · a real ERP connector · multi-tier BOM traversal.
 
 ---
 

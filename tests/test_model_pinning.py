@@ -66,7 +66,8 @@ def test_repo_grep_model_pinning():
     # Ignored directories, extensions, and test files
     ignored_dirs = {".git", ".venv", "__pycache__", ".pytest_cache", "tests"}
     ignored_extensions = {".md", ".txt", ".json", ".log"}
-    ignored_files = {".env", ".gitignore"}
+    ignored_files = {".env", ".env.example", ".gitignore"}
+
 
     matches = []
 
