@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "v1",
+  "protocolVersion": "0.3.0",
+  "name": "Sentinel Hygiene Agent",
+  "displayName": "Sentinel Hygiene Agent",
+  "description": "Validates inbound deviation payloads against Pydantic schema contracts and executes prompt-injection ingress guardrail sanitization.",
+  "version": "1.0.0",
+  "url": "https://sentinel-orchestrator-627057384680.us-central1.run.app/agents/hygiene",
+  "capabilities": {},
+  "defaultInputModes": [
+    "application/json",
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "application/json",
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "validate_deviation_schema",
+      "name": "validate_deviation_schema",
+      "description": "Validates inbound supply chain disruption and deviation payloads against the typed Deviation contract model.",
+      "tags": [
+        "schema-validation",
+        "pydantic",
+        "data-governance"
+      ]
+    },
+    {
+      "id": "sanitize_inbound_text",
+      "name": "sanitize_inbound_text",
+      "description": "Applies ingress guardrail security sanitization to detect and block prompt injection, delimiters, and unsafe directives in deviation notes.",
+      "tags": [
+        "security-guardrail",
+        "prompt-injection-defense",
+        "sanitization"
+      ]
+    }
+  ]
+}

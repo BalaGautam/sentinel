@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "v1",
+  "protocolVersion": "0.3.0",
+  "name": "Sentinel Triage Orchestrator",
+  "displayName": "Sentinel Triage Orchestrator",
+  "description": "Coordinates autonomous supply chain deviation triage workflows, deterministically scores mitigation scenarios, and synthesizes qualitative operational narratives.",
+  "version": "1.0.0",
+  "url": "https://sentinel-orchestrator-627057384680.us-central1.run.app/agents/orchestrator",
+  "capabilities": {},
+  "defaultInputModes": [
+    "application/json",
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "application/json",
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "triage_deviation",
+      "name": "triage_deviation",
+      "description": "Coordinates end-to-end deviation triage workflow, integrating ATP order commitments and supplier reliability memory.",
+      "tags": [
+        "orchestration",
+        "triage",
+        "workflow"
+      ]
+    },
+    {
+      "id": "score_mitigation_scenarios",
+      "name": "score_mitigation_scenarios",
+      "description": "Invokes deterministic mixed-integer linear programming (MILP) solver to evaluate and score mitigation scenarios across cost, SLA penalties, and lead-times.",
+      "tags": [
+        "scenario-scoring",
+        "milp-solver",
+        "optimization"
+      ]
+    }
+  ]
+}

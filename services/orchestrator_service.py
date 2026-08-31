@@ -9,6 +9,7 @@ import sys
 import json
 import base64
 import logging
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, Request, HTTPException, Response, status
@@ -17,6 +18,9 @@ import uvicorn
 
 from config import settings
 from agents.pipeline import run_sentinel_workflow
+
+REGISTRY_DIR = Path(__file__).resolve().parent.parent / "config" / "registry"
+
 
 class TraceFilter(logging.Filter):
     """Ensure all log records have trace_id populated to avoid KeyErrors."""
@@ -54,6 +58,40 @@ def health_check():
         "inference_location": settings.VERTEX_INFERENCE_LOCATION,
         "model_id": settings.MODEL_ID,
     }
+
+
+def _load_agent_card(agent_name: str) -> Response:
+    """Load and return an A2A agent card JSON from config/registry/."""
+    card_path = REGISTRY_DIR / f"{agent_name}.agent-card.json"
+    if not card_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent card for '{agent_name}' not found")
+    try:
+        content = card_path.read_text(encoding="utf-8")
+        return Response(content=content, media_type="application/json")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reading agent card for {agent_name}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error reading agent card: {e}")
+
+
+@app.get("/agents/hygiene")
+def get_hygiene_agent_card():
+    """A2A read-only discovery endpoint for Sentinel Hygiene Agent."""
+    return _load_agent_card("hygiene")
+
+
+@app.get("/agents/sourcing")
+def get_sourcing_agent_card():
+    """A2A read-only discovery endpoint for Sentinel Sourcing Specialist Agent."""
+    return _load_agent_card("sourcing")
+
+
+@app.get("/agents/orchestrator")
+def get_orchestrator_agent_card():
+    """A2A read-only discovery endpoint for Sentinel Triage Orchestrator Agent."""
+    return _load_agent_card("orchestrator")
+
 
 
 @app.post("/push")

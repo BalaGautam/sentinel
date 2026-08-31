@@ -10,6 +10,9 @@ Built on Google ADK · Gemini 3.7 Flash (Vertex AI) · Cloud Run · Pub/Sub · B
 
 ![Architecture](docs/architecture.svg)
 
+The three ADK agents are registered in Google Cloud Agent Registry as A2A agents in us-central1, with skills indexed for cross-department discovery. The Vertex AI Memory Bank instance auto-registers alongside them, giving four Sentinel entries in one governance catalog. A BigQuery mirror feeds the analytics views.
+
+
 ---
 
 ## The problem
@@ -90,8 +93,7 @@ with a key from the environment; the signature is persisted in the ledger as an 
 
 **I-8 — Memory is computed, never authored.** `supplier_reliability` is aggregated by SQL over
 `delivery_history`; every record carries `provenance="computed"`. No LLM-generated text enters
-memory, which closes slow memory-poisoning. Memories are stored in Vertex AI Memory Bank, scoped
-by supplier_id, with BigQuery as a logged fallback.
+memory, which closes slow memory-poisoning.
 
 **I-9 — Healing actions are idempotent.** `SHA256(deviation_id + sku_id + option_id)`. Pub/Sub is
 at-least-once; a redelivered event must not cut a second order.
@@ -236,11 +238,6 @@ by SKU and they slice across cost centers. Five dimensions, all evaluated, is th
 Reserve-then-commit with pending reservations counted is the fix, and it needs a transactional
 store — which is why one Firestore document sits alongside an otherwise all-BigQuery design.
 
-**Check-then-act is a race, and proving it requires actual contention.** Our first concurrency
-test called both workflows sequentially — it validated the logic but never exercised the race.
-Two threads on a barrier, run ten times, is the difference between asserting an invariant and
-demonstrating it.
-
 **BigQuery is not immutable, and pretending otherwise would be the weakest claim in the project.**
 Hash-chaining makes tampering detectable, which is an honest and provable property.
 
@@ -260,11 +257,11 @@ code.
 Stated plainly, because a claim we cannot demonstrate is worth less than an honest gap.
 
 - **The ERP integration is an idempotent stub**, not a live connector.
-- **Agent Registry is a BigQuery table with versioned manifests**, not the GEAP Agent Registry.
 - **The guardrail is a deterministic pattern pre-filter**, not Model Armor and not an ML classifier. It blocks the injection class we test for; it is not a general-purpose defense.
 - **No A2UI adapter** — the UI is Streamlit only.
 - **No Data Engineering Agent.** `sentinel_raw.asn_landing` contains the seeded defect classes and `v_feed_quality` detects them, but no agent-built repair pipeline runs. The view reports raw-feed defect detection, not pipeline repair output.
-- **The concurrency test is multi-threaded within a single process**, not multi-instance. The Firestore transaction is what provides distributed safety; the test validates it under genuine thread contention (10/10 runs, exactly one winner), but does not exercise multiple Cloud Run instances.
+- **The concurrency test is multi-threaded within a single process**, not multi-instance. The Firestore transaction provides distributed safety; the test validates it under genuine thread contention (10/10 runs, exactly one winner), but does not exercise multiple Cloud Run instances.
+- **A2A discovery endpoints are not externally verified.** The three agents are registered in Agent Registry with A2A cards, indexed skills, and Cloud Run endpoint URLs. The service exposes discovery routes for each agent, validated by local tests, but runs with internal-only ingress so the routes were not confirmed against the public endpoint.
 - **Approvals are HMAC-signed, not OIDC-signed.** The HMAC proves payload integrity; operator identity is supplied rather than authenticated.
 - **All data is synthetic**, generated for this submission.
 
@@ -272,11 +269,11 @@ Stated plainly, because a claim we cannot demonstrate is worth less than an hone
 
 ## What we'd build next
 
-The GEAP Agent Registry as a first-class component · a Gemma-based guardrail classifier
-alongside the pattern filter · the BigQuery Data Engineering Agent authoring the repair pipeline
-as versioned Dataform SQLX · a Conversational Analytics data agent over the six views · a real
-ERP connector · multi-tier BOM traversal.
+A Gemma-based guardrail classifier alongside the pattern filter · the BigQuery Data
+Engineering Agent authoring the repair pipeline as versioned Dataform SQLX · a Conversational
+Analytics data agent over the six views · a real ERP connector · multi-tier BOM traversal.
 
 ---
 
 *Built for the Google All Things Agentic Hackathon, August 2026.*
+

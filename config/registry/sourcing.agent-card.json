@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "v1",
+  "protocolVersion": "0.3.0",
+  "name": "Sentinel Sourcing Specialist",
+  "displayName": "Sentinel Sourcing Specialist",
+  "description": "Analyzes supplier reliability metrics, historical lead-time variances, and evaluates multi-mode sourcing trade-offs.",
+  "version": "1.0.0",
+  "url": "https://sentinel-orchestrator-627057384680.us-central1.run.app/agents/sourcing",
+  "capabilities": {},
+  "defaultInputModes": [
+    "application/json",
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "application/json",
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "resolve_supply_options",
+      "name": "resolve_supply_options",
+      "description": "Evaluates supplier options, historical reliability trends, lead-time variances, and sourcing modes (Contract, Spot, Air Expedite, DC Rebalance).",
+      "tags": [
+        "procurement",
+        "sourcing-analysis",
+        "supplier-reliability"
+      ]
+    }
+  ]
+}
