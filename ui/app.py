@@ -48,30 +48,51 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    .block-container {
+        padding-top: 2.8rem;
+        padding-bottom: 2rem;
+        padding-left: 2.5rem;
+        padding-right: 2.5rem;
+    }
     .main-header {
-        font-size: 2.1rem;
+        background-color: transparent;
+        font-size: 2.3rem;
         font-weight: 700;
         color: #1E293B;
-        margin-bottom: 0.2rem;
+        margin-bottom: 0.3rem;
+        padding-top: 0.2rem;
+        line-height: 1.3;
+        overflow: visible;
     }
     .sub-header {
-        font-size: 1.0rem;
+        background-color: transparent;
+        font-size: 1.05rem;
         color: #64748B;
         margin-bottom: 1.2rem;
     }
     .scenario-card-recommended {
         background-color: #F0FDF4;
+        color: #1E293B;
         border: 2px solid #22C55E;
         border-radius: 12px;
         padding: 16px;
         margin-bottom: 12px;
+        min-height: 100px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     .scenario-card-standard {
         background-color: #FFFFFF;
+        color: #1E293B;
         border: 1px solid #CBD5E1;
         border-radius: 12px;
         padding: 16px;
         margin-bottom: 12px;
+        min-height: 100px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     .status-badge-auto {
         background-color: #DCFCE7;
@@ -105,6 +126,15 @@ st.markdown(
         border-radius: 4px;
         font-size: 0.82rem;
     }
+    div[role="radiogroup"] label {
+        background-color: #F1F5F9;
+        color: #1E293B;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-bottom: 4px;
+        width: 100%;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -127,29 +157,28 @@ bq_client, fs_client = get_clients()
 
 # --- SIDEBAR NAVIGATION & FLEET HEALTH ---
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/shield.png", width=60)
-    st.markdown("### **PROJECT SENTINEL**")
-    st.caption("Fortified Autonomous Fleet")
+    # 1. Enriched Wordmark Lockup
+    st.markdown(
+        """
+        <div style="text-align: center; margin-bottom: 0.8rem; padding-top: 0.4rem;">
+            <div style="font-size: 2.7rem; font-weight: 900; letter-spacing: 0.16em; color: #0F172A; text-transform: uppercase; line-height: 1.05;">SENTINEL</div>
+            <div style="font-size: 1.05rem; font-weight: 600; color: #475569; margin-top: 6px; letter-spacing: 0.04em;">Fortified Autonomous Fleet</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.divider()
 
-    st.markdown("**Environment Configuration (§2.1)**")
-    st.markdown(f"**Model ID:** `{settings.MODEL_ID}`")
-    st.markdown(f"**Inference:** `{settings.VERTEX_INFERENCE_LOCATION}`")
-    st.markdown(f"**Data & Compute:** `{settings.GCP_REGION}`")
-    st.markdown(f"**Project:** `{settings.PROJECT_ID}`")
-    st.markdown(f"**Dataset:** `{settings.BQ_DATASET}`")
-
+    # 2. Navigation (directly beneath wordmark, above the fold)
+    app_mode = st.radio(
+        "Navigation",
+        ["Deviation Triage & Remediation", "Executive Analytics Dashboard", "Audit Ledger Explorer"],
+        index=0,
+    )
     st.divider()
-    if st.button("🔄 Reset Demo State", use_container_width=True, help="Reset dynamic tables, Firestore leases, and OKF spend counters"):
-        with st.spinner("Resetting demo state..."):
-            from scripts.reset_demo import reset_demo_state
-            reset_demo_state(bq_client, fs_client)
-            st.session_state.clear()
-            st.success("✅ Demo state reset complete. All spend counters at 0%.")
-            st.rerun()
 
-    st.divider()
-    st.markdown("**Ledger Integrity (I-6)**")
+    # 3. Ledger Integrity
+    st.markdown("**Audit Ledger Integrity**")
     try:
         ok, broken_at, rec_count = verify_chain(bq_client, settings.BQ_DATASET)
         if ok:
@@ -159,13 +188,25 @@ with st.sidebar:
             st.error(f"⚠️ Check Failed: {broken_at}")
     except Exception:
         st.info("Ledger initializing...")
-
     st.divider()
-    app_mode = st.radio(
-        "Navigation",
-        ["Deviation Triage & Remediation", "Analytical Views (§6.3 Dashboard)", "Audit Ledger Explorer"],
-        index=0,
-    )
+
+    # 4. Environment Configuration
+    st.markdown("**Environment Configuration**")
+    st.markdown(f"**Model ID:** `{settings.MODEL_ID}`")
+    st.markdown(f"**Inference:** `{settings.VERTEX_INFERENCE_LOCATION}`")
+    st.markdown(f"**Data & Compute:** `{settings.GCP_REGION}`")
+    st.markdown(f"**Project:** `{settings.PROJECT_ID}`")
+    st.markdown(f"**Dataset:** `{settings.BQ_DATASET}`")
+    st.divider()
+
+    # 5. Reset Demo State (at the bottom)
+    if st.button("🔄 Reset Demo State", use_container_width=True, help="Reset dynamic tables, Firestore leases, and OKF spend counters"):
+        with st.spinner("Resetting demo state..."):
+            from scripts.reset_demo import reset_demo_state
+            reset_demo_state(bq_client, fs_client)
+            st.session_state.clear()
+            st.success("✅ Demo state reset complete. All spend counters at 0%.")
+            st.rerun()
 
 
 # =============================================================================
@@ -174,7 +215,7 @@ with st.sidebar:
 if app_mode == "Deviation Triage & Remediation":
     st.markdown('<div class="main-header">🛡️ Autonomous Mitigation & Triage Cockpit</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="sub-header">Deterministic MILP Optimization with Hash-Chained Verification (I-1, I-2, I-7, §8.7)</div>',
+        '<div class="sub-header">Deterministic MILP Optimization with Tamper-Evident Hash-Chained Verification</div>',
         unsafe_allow_html=True,
     )
 
@@ -213,11 +254,51 @@ if app_mode == "Deviation Triage & Remediation":
     # Inbound Deviation Dossier
     with st.expander(f"📋 Inbound Deviation Dossier: {dev_id} ({dev_obj.deviation_type})", expanded=True):
         dcol1, dcol2, dcol3, dcol4, dcol5 = st.columns(5)
-        dcol1.metric("SKU ID", dev_obj.sku_id)
-        dcol2.metric("Target DC", dev_obj.dc_id)
-        dcol3.metric("Magnitude", f"{dev_obj.magnitude_units} units")
-        dcol4.metric("Delay Risk", f"{dev_obj.delay_days} days")
-        dcol5.metric("Source System", dev_obj.source_system)
+        dcol1.markdown(
+            f"""
+            <div style="display: flex; flex-direction: column;">
+                <span style="font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: #64748B; margin-bottom: 2px;">SKU ID</span>
+                <span style="font-size: 1.15rem; font-weight: 700; color: #1E293B; word-break: break-word;">{dev_obj.sku_id}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        dcol2.markdown(
+            f"""
+            <div style="display: flex; flex-direction: column;">
+                <span style="font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: #64748B; margin-bottom: 2px;">Target DC</span>
+                <span style="font-size: 1.15rem; font-weight: 700; color: #1E293B; word-break: break-word;">{dev_obj.dc_id}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        dcol3.markdown(
+            f"""
+            <div style="display: flex; flex-direction: column;">
+                <span style="font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: #64748B; margin-bottom: 2px;">Magnitude</span>
+                <span style="font-size: 1.15rem; font-weight: 700; color: #1E293B; word-break: break-word;">{dev_obj.magnitude_units} units</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        dcol4.markdown(
+            f"""
+            <div style="display: flex; flex-direction: column;">
+                <span style="font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: #64748B; margin-bottom: 2px;">Delay Risk</span>
+                <span style="font-size: 1.15rem; font-weight: 700; color: #1E293B; word-break: break-word;">{dev_obj.delay_days} days</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        dcol5.markdown(
+            f"""
+            <div style="display: flex; flex-direction: column;">
+                <span style="font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: #64748B; margin-bottom: 2px;">Source System</span>
+                <span style="font-size: 1.15rem; font-weight: 700; color: #1E293B; word-break: break-word;">{dev_obj.source_system}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         st.markdown("**Untrusted Inbound Note:**")
         st.code(dev_obj.raw_note)
@@ -246,11 +327,11 @@ if app_mode == "Deviation Triage & Remediation":
         st.stop()
 
     if wf_res.get("status") == "BLOCKED_BY_GUARDRAIL":
-        st.error(f"🛑 **Ingress Guardrail Tripped**: Inbound payload blocked per I-12. Reason: {wf_res.get('reason')}")
+        st.error(f"🛑 **Security Guardrail Tripped**: Inbound payload rejected by security filter. Reason: {wf_res.get('reason')}")
         st.stop()
 
-    # --- SECTION: ORCHESTRATOR NARRATIVE (I-1) ---
-    st.markdown("### 🤖 Orchestrator Qualitative Triage (I-1)")
+    # --- SECTION: ORCHESTRATOR NARRATIVE ---
+    st.markdown("### 🤖 Orchestrator Qualitative Triage")
     ncol1, ncol2 = st.columns(2)
     with ncol1:
         st.info(f"**Operational Narrative:**\n\n{wf_res.get('narrative', 'N/A')}")
@@ -273,8 +354,8 @@ if app_mode == "Deviation Triage & Remediation":
         rec_id = None
         solver_sha256 = wf_res.get("solver_sha256", "N/A")
 
-    # --- SECTION: SENSITIVITY & RISK-TOLERANCE SLIDER (§8.7) ---
-    st.markdown("### ⚖️ Mitigation Sensitivity & Trade-Off Control (§8.7)")
+    # --- SECTION: SENSITIVITY & RISK-TOLERANCE SLIDER ---
+    st.markdown("### ⚖️ Mitigation Sensitivity & Trade-Off Control")
     slider_col1, slider_col2 = st.columns([3, 1])
     with slider_col1:
         sensitivity = st.slider(
@@ -293,8 +374,8 @@ if app_mode == "Deviation Triage & Remediation":
         else:
             st.metric("Strategy", "Balanced", "Optimal Trade-Off")
 
-    # --- SECTION: THREE SCENARIO COMPARISON CARDS (§8.7) ---
-    st.markdown("### 📊 Scored Scenario Evaluation (§8.7)")
+    # --- SECTION: THREE SCENARIO COMPARISON CARDS ---
+    st.markdown("### 📊 Scored Mitigation Scenarios")
     if scenarios:
         scol1, scol2, scol3 = st.columns(3)
         scenario_cols = [scol1, scol2, scol3]
@@ -315,20 +396,20 @@ if app_mode == "Deviation Triage & Remediation":
                     unsafe_allow_html=True,
                 )
 
-                st.metric("Total Cost", f"\${sc.total_cost_usd:,.2f}" if sc.total_cost_usd is not None else "N/A")
+                st.metric("Total Cost", f"${sc.total_cost_usd:,.2f}" if sc.total_cost_usd is not None else "N/A")
                 st.metric("Days to Coverage", f"{sc.days_to_coverage} days" if sc.days_to_coverage is not None else "N/A")
-                st.metric("SLA Penalty Exposure", f"\${sc.sla_penalty_usd:,.2f}" if sc.sla_penalty_usd is not None else "\$0.00")
-                st.metric("Total Net Exposure", f"\${sc.total_exposure_usd:,.2f}" if sc.total_exposure_usd is not None else "N/A")
+                st.metric("SLA Penalty Exposure", f"${sc.sla_penalty_usd:,.2f}" if sc.sla_penalty_usd is not None else "$0.00")
+                st.metric("Total Net Exposure", f"${sc.total_exposure_usd:,.2f}" if sc.total_exposure_usd is not None else "N/A")
 
                 st.caption(f"Solver Status: `{sc.solver_status}` | Feasible: `{sc.feasible}`")
 
                 if sc.selected:
                     st.markdown("**Selected Options Allocation:**")
                     for opt in sc.selected:
-                        st.markdown(f"- `{opt['option_id']}`: **{opt['qty']} units** (\${opt['cost_usd']})")
+                        st.markdown(f"- `{opt['option_id']}`: **{opt['qty']} units** (${opt['cost_usd']})")
 
     # --- SECTION: OKF POLICY GOVERNOR OUTCOME & VELOCITY GAUGES ---
-    st.markdown("### 🏛️ OKF Policy Governor Decision & Spend Velocity (I-3, I-4)")
+    st.markdown("### 🏛️ Policy Governor Decision & Spend Velocity")
 
     gcol1, gcol2 = st.columns([1.2, 2])
     with gcol1:
@@ -346,7 +427,7 @@ if app_mode == "Deviation Triage & Remediation":
             st.error("🛑 Fleet execution blocked by policy or security constraint.")
 
     with gcol2:
-        st.markdown("**Rolling 24h Spend Velocity vs Ceilings (§8.2, I-3):**")
+        st.markdown("**Rolling 24-Hour Spend Velocity vs Budget Ceilings:**")
         try:
             v_df = bq_client.query(
                 f"SELECT dimension, dimension_key, spent_24h_usd, ceiling_usd, remaining_budget_usd, utilization_pct FROM `{settings.PROJECT_ID}.{settings.BQ_DATASET}.v_spend_velocity_24h` LIMIT 10"
@@ -354,17 +435,17 @@ if app_mode == "Deviation Triage & Remediation":
             if not v_df.empty:
                 for _, r in v_df.iterrows():
                     u_pct = min(100.0, float(r["utilization_pct"]))
-                    st.write(f"**{r['dimension']}** (`{r['dimension_key']}`): \${float(r['spent_24h_usd']):,.2f} / \${float(r['ceiling_usd']):,.2f} ({u_pct:.1f}%)")
+                    st.write(f"**{r['dimension']}** (`{r['dimension_key']}`): ${float(r['spent_24h_usd']):,.2f} / ${float(r['ceiling_usd']):,.2f} ({u_pct:.1f}%)")
                     st.progress(u_pct / 100.0)
             else:
                 st.info("No active 24h spend recorded.")
         except Exception:
             st.info("Spend velocity counters currently clear.")
 
-    # --- SECTION: SIGNED HITL APPROVAL (I-7) ---
+    # --- SECTION: SIGNED HITL APPROVAL ---
     if okf_outcome == "REQUIRE_HITL" and scenarios:
         st.divider()
-        st.markdown("### ✍️ Operator HITL Signed Approval (Invariant I-7)")
+        st.markdown("### ✍️ Human-in-the-Loop Operator Signed Approval")
         st.markdown("This deviation requires an authorized operator signature before funds can be committed and purchase orders cut.")
 
         appr_col1, appr_col2 = st.columns([1.5, 1])
@@ -377,7 +458,7 @@ if app_mode == "Deviation Triage & Remediation":
         with appr_col2:
             rec_scenario_obj = next((s for s in scenarios if s.scenario_id == rec_id), scenarios[0])
             st.markdown(f"**Action to Approve:** `{rec_scenario_obj.label}`")
-            st.markdown(f"**Total Capital Commitment:** \${rec_scenario_obj.total_cost_usd:,.2f}")
+            st.markdown(f"**Total Capital Commitment:** ${rec_scenario_obj.total_cost_usd:,.2f}")
             st.markdown(f"**Target SKU:** `{dev_obj.sku_id}`")
             st.markdown(f"**Supplier:** `SUP-09`")
 
@@ -411,14 +492,14 @@ if app_mode == "Deviation Triage & Remediation":
                 except Exception as ex:
                     st.error(f"Approval execution error: {ex}")
 
-    # --- SECTION: FOOTER WITH SOLVER SHA-256 (I-2) ---
+    # --- SECTION: FOOTER WITH SOLVER SHA-256 ---
     st.divider()
     st.markdown(
         f"""
         <div style="text-align: center; color: #64748B; font-size: 0.88rem;">
-            Deterministic Solver SHA-256 (I-2): <span class="hash-code">{solver_sha256}</span>
+            Deterministic Solver Digest: <span class="hash-code">{solver_sha256}</span>
             <br>
-            Ledger Chain: <b>Append-Only Hash Chain (I-6)</b> · Model: <b>{settings.MODEL_ID} ({settings.VERTEX_INFERENCE_LOCATION})</b>
+            Audit Ledger: <b>Append-Only Tamper-Evident Hash Chain</b> · Model: <b>{settings.MODEL_ID} ({settings.VERTEX_INFERENCE_LOCATION})</b>
         </div>
         """,
         unsafe_allow_html=True,
@@ -426,12 +507,12 @@ if app_mode == "Deviation Triage & Remediation":
 
 
 # =============================================================================
-# VIEW 2: ANALYTICAL VIEWS (§6.3 DASHBOARD)
+# VIEW 2: EXECUTIVE ANALYTICS DASHBOARD
 # =============================================================================
-elif app_mode == "Analytical Views (§6.3 Dashboard)":
-    st.markdown('<div class="main-header">📈 Analytical Views & Supply Chain Intelligence (§6.3)</div>', unsafe_allow_html=True)
+elif app_mode == "Executive Analytics Dashboard":
+    st.markdown('<div class="main-header">📈 Executive Analytics & Intelligence</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="sub-header">Live SQL Views with Business-Language Column Naming for Conversational Analytics</div>',
+        '<div class="sub-header">Live Analytical Views with Business-Language Metrics</div>',
         unsafe_allow_html=True,
     )
 
@@ -467,7 +548,7 @@ elif app_mode == "Analytical Views (§6.3 Dashboard)":
             df2 = bq_client.query(f"SELECT * FROM `{settings.PROJECT_ID}.{settings.BQ_DATASET}.v_exposure_avoided`").to_dataframe()
             if not df2.empty:
                 total_avoided = df2["exposure_avoided_usd"].sum()
-                st.metric("Total Cumulative SLA Exposure Avoided", f"\${total_avoided:,.2f}")
+                st.metric("Total Cumulative SLA Exposure Avoided", f"${total_avoided:,.2f}")
                 st.dataframe(df2, use_container_width=True)
             else:
                 st.info("No exposure avoided records yet.")
@@ -552,7 +633,7 @@ elif app_mode == "Analytical Views (§6.3 Dashboard)":
 # VIEW 3: AUDIT LEDGER EXPLORER
 # =============================================================================
 elif app_mode == "Audit Ledger Explorer":
-    st.markdown('<div class="main-header">📜 Tamper-Evident Hash Chain Audit Ledger (I-6, §8.3)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">📜 Tamper-Evident Hash Chain Audit Ledger</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="sub-header">Append-Only Hash Chain: record_hash = SHA256(prev_record_hash + canonical_json)</div>',
         unsafe_allow_html=True,

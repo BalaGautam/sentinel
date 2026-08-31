@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 720" width="1240" height="720" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1240" height="720" fill="#FFFFFF"/>
+
+  <text x="40" y="44" font-size="25" font-weight="700" fill="#0F172A">Project Sentinel — Fortified Enterprise Fleet</text>
+  <text x="40" y="68" font-size="14" fill="#64748B">Autonomous demand management · Gemini 3.7 Flash · Google ADK · Cloud Run · BigQuery</text>
+
+  <!-- legend -->
+  <rect x="880" y="30" width="14" height="14" rx="3" fill="#DBEAFE" stroke="#2563EB"/>
+  <text x="901" y="42" font-size="12" fill="#334155">LLM agents (ADK)</text>
+  <rect x="880" y="52" width="14" height="14" rx="3" fill="#DCFCE7" stroke="#16A34A"/>
+  <text x="901" y="64" font-size="12" fill="#334155">Deterministic — no LLM</text>
+  <rect x="1050" y="30" width="14" height="14" rx="3" fill="#FEF3C7" stroke="#D97706"/>
+  <text x="1071" y="42" font-size="12" fill="#334155">Human decision</text>
+  <rect x="1050" y="52" width="14" height="14" rx="3" fill="#F1F5F9" stroke="#94A3B8"/>
+  <text x="1071" y="64" font-size="12" fill="#334155">Data / infra</text>
+
+  <!-- spine -->
+  <text x="40" y="108" font-size="12" font-weight="700" fill="#94A3B8" letter-spacing="1.5">PREPARE → SENSE → SCENARIO → SCORE → HEAL → ASK</text>
+
+  <!-- row 1 : ingress -->
+  <rect x="40" y="126" width="230" height="64" rx="8" fill="#F1F5F9" stroke="#94A3B8"/>
+  <text x="56" y="150" font-size="14" font-weight="700" fill="#0F172A">Inbound feeds → sentinel_raw</text>
+  <text x="56" y="169" font-size="11.5" fill="#475569">ASN drops · demand signals · ERP</text>
+  <text x="56" y="183" font-size="11.5" fill="#475569">3 seeded defect classes</text>
+
+  <rect x="300" y="126" width="210" height="64" rx="8" fill="#F1F5F9" stroke="#94A3B8"/>
+  <text x="316" y="150" font-size="14" font-weight="700" fill="#0F172A">Background watch</text>
+  <text x="316" y="169" font-size="11.5" fill="#475569">Cloud Run job · cron</text>
+  <text x="316" y="183" font-size="11.5" fill="#475569">publishes deviations</text>
+
+  <rect x="540" y="126" width="200" height="64" rx="8" fill="#F1F5F9" stroke="#94A3B8"/>
+  <text x="556" y="150" font-size="14" font-weight="700" fill="#0F172A">Pub/Sub</text>
+  <text x="556" y="169" font-size="11.5" fill="#475569">sentinel-deviations</text>
+  <text x="556" y="183" font-size="11.5" fill="#475569">at-least-once → idempotent</text>
+
+  <rect x="770" y="126" width="200" height="64" rx="8" fill="#DCFCE7" stroke="#16A34A"/>
+  <text x="786" y="150" font-size="14" font-weight="700" fill="#14532D">Guardrail</text>
+  <text x="786" y="169" font-size="11.5" fill="#166534">ingress + tool return paths</text>
+  <text x="786" y="183" font-size="11.5" fill="#166534">injection / override filter</text>
+
+  <path d="M270 158 H298" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M510 158 H538" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M740 158 H768" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <!-- row 2 : agents -->
+  <rect x="40" y="230" width="930" height="120" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-dasharray="4 3"/>
+  <text x="56" y="252" font-size="12" font-weight="700" fill="#64748B">AGENT FLEET — Google ADK · Gemini 3.7 Flash (Vertex AI, global endpoint)</text>
+
+  <rect x="60" y="266" width="200" height="66" rx="8" fill="#DBEAFE" stroke="#2563EB"/>
+  <text x="76" y="290" font-size="13.5" font-weight="700" fill="#1E3A8A">hygiene_agent</text>
+  <text x="76" y="308" font-size="11.5" fill="#1E40AF">Pydantic contract enforcement</text>
+  <text x="76" y="322" font-size="11.5" fill="#1E40AF">schema rejection → ledger</text>
+
+  <rect x="285" y="266" width="215" height="66" rx="8" fill="#DBEAFE" stroke="#2563EB"/>
+  <text x="301" y="290" font-size="13.5" font-weight="700" fill="#1E3A8A">triage_orchestrator</text>
+  <text x="301" y="308" font-size="11.5" fill="#1E40AF">plans · calls tools · delegates</text>
+  <text x="301" y="322" font-size="11.5" fill="#1E40AF">emits narrative text only</text>
+
+  <rect x="525" y="266" width="200" height="66" rx="8" fill="#DBEAFE" stroke="#2563EB"/>
+  <text x="541" y="290" font-size="13.5" font-weight="700" fill="#1E3A8A">sourcing_specialist</text>
+  <text x="541" y="308" font-size="11.5" fill="#1E40AF">supply options · MOQ</text>
+  <text x="541" y="322" font-size="11.5" fill="#1E40AF">lead times · tariffs</text>
+
+  <rect x="750" y="266" width="200" height="66" rx="8" fill="#F1F5F9" stroke="#94A3B8"/>
+  <text x="766" y="290" font-size="13.5" font-weight="700" fill="#0F172A">Computed memory</text>
+  <text x="766" y="308" font-size="11.5" fill="#475569">90-day supplier reliability</text>
+  <text x="766" y="322" font-size="11.5" fill="#475569">provenance = computed</text>
+
+  <!-- I-1 boundary -->
+  <line x1="40" y1="372" x2="1200" y2="372" stroke="#16A34A" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="46" y="366" font-size="11.5" font-weight="700" fill="#16A34A">I-1 BOUNDARY — no LLM-produced number crosses below this line</text>
+
+  <!-- row 3 : deterministic -->
+  <rect x="40" y="392" width="290" height="86" rx="8" fill="#DCFCE7" stroke="#16A34A"/>
+  <text x="56" y="416" font-size="14" font-weight="700" fill="#14532D">OR-Tools MILP solver</text>
+  <text x="56" y="435" font-size="11.5" fill="#166534">3 costed scenarios · 2000 ms cap</text>
+  <text x="56" y="449" font-size="11.5" fill="#166534">heuristic fallback → forces HITL</text>
+  <text x="56" y="466" font-size="11.5" font-weight="700" fill="#166534">every number originates here · SHA-256</text>
+
+  <rect x="360" y="392" width="290" height="86" rx="8" fill="#DCFCE7" stroke="#16A34A"/>
+  <text x="376" y="416" font-size="14" font-weight="700" fill="#14532D">OKF Policy Governor</text>
+  <text x="376" y="435" font-size="11.5" fill="#166534">single-txn cap · 5-dimension velocity</text>
+  <text x="376" y="449" font-size="11.5" fill="#166534">VIP guard · degraded guard · kill switch</text>
+  <text x="376" y="466" font-size="11.5" font-weight="700" fill="#166534">thresholds load from BigQuery, versioned</text>
+
+  <rect x="680" y="392" width="290" height="86" rx="8" fill="#DCFCE7" stroke="#16A34A"/>
+  <text x="696" y="416" font-size="14" font-weight="700" fill="#14532D">Reserve-then-commit</text>
+  <text x="696" y="435" font-size="11.5" fill="#166534">Firestore lease · pending counts</text>
+  <text x="696" y="449" font-size="11.5" fill="#166534">against ceilings (I-4)</text>
+  <text x="696" y="466" font-size="11.5" font-weight="700" fill="#166534">closes the check-then-act race</text>
+
+  <path d="M330 435 H358" stroke="#16A34A" stroke-width="1.5" marker-end="url(#g)"/>
+  <path d="M650 435 H678" stroke="#16A34A" stroke-width="1.5" marker-end="url(#g)"/>
+  <defs>
+    <marker id="g" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 z" fill="#16A34A"/>
+    </marker>
+  </defs>
+
+  <!-- fork -->
+  <path d="M505 478 V506" stroke="#334155" stroke-width="1.5"/>
+  <path d="M280 506 H760" stroke="#334155" stroke-width="1.5"/>
+  <path d="M280 506 V528" stroke="#334155" stroke-width="1.5" marker-end="url(#d)"/>
+  <path d="M760 506 V528" stroke="#334155" stroke-width="1.5" marker-end="url(#d)"/>
+  <defs>
+    <marker id="d" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <text x="150" y="500" font-size="12" font-weight="700" fill="#16A34A">within policy</text>
+  <text x="790" y="500" font-size="12" font-weight="700" fill="#D97706">exceeds policy</text>
+
+  <rect x="150" y="534" width="260" height="72" rx="8" fill="#DCFCE7" stroke="#16A34A"/>
+  <text x="166" y="558" font-size="14" font-weight="700" fill="#14532D">AUTO_HEAL</text>
+  <text x="166" y="577" font-size="11.5" fill="#166534">idempotent action execution</text>
+  <text x="166" y="591" font-size="11.5" font-weight="700" fill="#166534">no human involved</text>
+
+  <rect x="630" y="534" width="260" height="72" rx="8" fill="#FEF3C7" stroke="#D97706"/>
+  <text x="646" y="558" font-size="14" font-weight="700" fill="#78350F">REQUIRE_HITL</text>
+  <text x="646" y="577" font-size="11.5" fill="#92400E">3 costed scenarios → operator</text>
+  <text x="646" y="591" font-size="11.5" font-weight="700" fill="#92400E">HMAC-SHA256 signed approval</text>
+
+  <path d="M280 606 V632" stroke="#334155" stroke-width="1.5"/>
+  <path d="M760 606 V632" stroke="#334155" stroke-width="1.5"/>
+  <path d="M280 632 H760" stroke="#334155" stroke-width="1.5"/>
+  <path d="M520 632 V652" stroke="#334155" stroke-width="1.5" marker-end="url(#d)"/>
+
+  <!-- base -->
+  <rect x="40" y="656" width="1160" height="48" rx="8" fill="#F1F5F9" stroke="#94A3B8"/>
+  <text x="56" y="678" font-size="13.5" font-weight="700" fill="#0F172A">BigQuery (us-central1) — system of record</text>
+  <text x="56" y="695" font-size="11.5" fill="#475569">tamper-evident hash-chained audit_ledger · scenario_library · spend_transactions · okf_policy · agent_registry · 6 analytical views</text>
+  <text x="900" y="678" font-size="11.5" fill="#475569">OpenTelemetry spans</text>
+  <text x="900" y="695" font-size="11.5" fill="#475569">Firestore: leases + kill switch</text>
+</svg>
